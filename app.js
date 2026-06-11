@@ -25,7 +25,6 @@ const els = {
   input: document.querySelector("#photoInput"),
   canvas: document.querySelector("#collageCanvas"),
   canvasFrame: document.querySelector("#canvasFrame"),
-  photoCount: document.querySelector("#photoCount"),
   thumbList: document.querySelector("#thumbList"),
   clearDemo: document.querySelector("#clearDemo"),
   customSize: document.querySelector("#customSize"),
@@ -56,13 +55,14 @@ let preview = { width: 0, height: 0, dpr: 1 };
 let rafId = 0;
 let dragState = null;
 let draggedThumbId = null;
+let thumbsDirty = true;
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
 function uid() {
-  return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+  return globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 }
 
 function selectedPhoto() {
@@ -456,8 +456,10 @@ function resizeCanvas() {
   const frameStyle = getComputedStyle(els.canvasFrame);
   const padX = parseFloat(frameStyle.paddingLeft) + parseFloat(frameStyle.paddingRight);
   const padY = parseFloat(frameStyle.paddingTop) + parseFloat(frameStyle.paddingBottom);
-  const availableW = Math.max(260, els.canvasFrame.clientWidth - padX);
-  const availableH = Math.max(260, window.innerHeight * (window.innerWidth < 760 ? 0.58 : 0.76) - padY);
+  const isMobile = window.innerWidth <= 760;
+  const mobilePreviewRatio = window.innerHeight < 740 ? 0.36 : 0.4;
+  const availableW = Math.max(180, els.canvasFrame.clientWidth - padX);
+  const availableH = Math.max(180, window.innerHeight * (isMobile ? mobilePreviewRatio : 0.76) - padY);
   let width = Math.min(availableW, 880);
   let height = width / aspect;
 
@@ -500,9 +502,11 @@ function hasOnlyDemoPhotos() {
 
 function updateControls() {
   els.body.dataset.mode = state.mode;
-  els.photoCount.textContent = String(state.photos.length);
   els.clearDemo.textContent = hasOnlyDemoPhotos() ? "清空範例" : "清空照片";
+  els.clearDemo.disabled = state.photos.length === 0;
   els.customSize.classList.toggle("is-open", state.ratio === "custom");
+  els.downloadPng.disabled = state.photos.length === 0;
+  els.downloadJpg.disabled = state.photos.length === 0;
 
   updateButtons("[data-mode]", state.mode, "mode");
   updateButtons("[data-ratio]", state.ratio, "ratio");
@@ -524,7 +528,6 @@ function updateControls() {
   const hasPhoto = Boolean(photo);
   [els.zoomRange, els.sizeRange, els.rotateRange, els.moveBack, els.moveNext, els.removePhoto, els.resetPhoto].forEach((control) => {
     control.disabled = !hasPhoto;
-    control.style.opacity = hasPhoto ? "1" : "0.42";
   });
 
   if (photo) {
@@ -536,7 +539,12 @@ function updateControls() {
     els.rotateValue.value = Math.round(photo.free.rotation);
   }
 
-  renderThumbs();
+  if (thumbsDirty) {
+    renderThumbs();
+    thumbsDirty = false;
+  } else {
+    syncThumbState();
+  }
 }
 
 function renderThumbs() {
@@ -602,6 +610,12 @@ function renderThumbs() {
   });
 }
 
+function syncThumbState() {
+  els.thumbList.querySelectorAll(".thumb").forEach((item) => {
+    item.classList.toggle("is-selected", item.dataset.id === state.selectedId);
+  });
+}
+
 function reorderPhoto(fromId, toId) {
   const fromIndex = state.photos.findIndex((photo) => photo.id === fromId);
   const toIndex = state.photos.findIndex((photo) => photo.id === toId);
@@ -609,6 +623,7 @@ function reorderPhoto(fromId, toId) {
   const [photo] = state.photos.splice(fromIndex, 1);
   state.photos.splice(toIndex, 0, photo);
   state.selectedId = photo.id;
+  thumbsDirty = true;
   scheduleRender();
 }
 
@@ -619,6 +634,7 @@ async function addFiles(fileList) {
   if (hasOnlyDemoPhotos()) {
     state.photos = [];
     state.selectedId = null;
+    thumbsDirty = true;
   }
 
   const availableSlots = MAX_PHOTOS - state.photos.length;
@@ -634,6 +650,7 @@ async function addFiles(fileList) {
       const photo = photoDefaults(img, state.photos.length, "user", file.name || `照片 ${state.photos.length + 1}`, src);
       state.photos.push(photo);
       state.selectedId = photo.id;
+      thumbsDirty = true;
     } catch {
       URL.revokeObjectURL(src);
     }
@@ -668,6 +685,7 @@ function moveSelected(step) {
   if (nextIndex === index) return;
   const [photo] = state.photos.splice(index, 1);
   state.photos.splice(nextIndex, 0, photo);
+  thumbsDirty = true;
   scheduleRender();
 }
 
@@ -677,6 +695,7 @@ function removeSelected() {
   const [removed] = state.photos.splice(index, 1);
   if (removed.source === "user") URL.revokeObjectURL(removed.src);
   state.selectedId = state.photos[Math.min(index, state.photos.length - 1)]?.id || null;
+  thumbsDirty = true;
   scheduleRender();
 }
 
@@ -696,6 +715,7 @@ function shufflePhotos() {
     const swap = Math.floor(Math.random() * (index + 1));
     [state.photos[index], state.photos[swap]] = [state.photos[swap], state.photos[index]];
   }
+  thumbsDirty = true;
   scheduleRender();
 }
 
@@ -795,6 +815,7 @@ function handleWheel(event) {
 }
 
 function exportCollage(format) {
+  if (!state.photos.length) return;
   const { width, height } = getExportSize();
   const exportCanvas = document.createElement("canvas");
   exportCanvas.width = width;
@@ -890,6 +911,7 @@ function bindEvents() {
     });
     state.photos = [];
     state.selectedId = null;
+    thumbsDirty = true;
     scheduleRender();
   });
 
@@ -924,6 +946,7 @@ async function init() {
   bindEvents();
   state.photos = await createDemoPhotos();
   state.selectedId = state.photos[0]?.id || null;
+  thumbsDirty = true;
   scheduleRender();
 }
 

@@ -52,6 +52,12 @@ button {
   border: 0;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+  transform: none;
+}
+
 .app-shell {
   min-height: 100vh;
   padding: max(18px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom))
@@ -513,6 +519,10 @@ output {
   transform: translateY(-1px);
 }
 
+button:disabled:hover {
+  transform: none;
+}
+
 .icon-button.danger {
   color: var(--danger);
 }
@@ -523,29 +533,10 @@ output {
 
 .canvas-toolbar {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   gap: 12px;
   margin-bottom: 12px;
-}
-
-.count-pill {
-  display: inline-flex;
-  align-items: center;
-  min-height: 34px;
-  padding: 0 12px;
-  border: 1px solid rgba(255, 255, 255, 0.74);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.64);
-  color: var(--muted);
-  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
-  font-size: 13px;
-  font-weight: 700;
-  backdrop-filter: blur(20px);
-}
-
-#photoCount {
-  color: var(--ink);
 }
 
 .canvas-frame {
@@ -738,8 +729,15 @@ body[data-mode="free"] .grid-only {
   }
 
   .stage-area {
+    position: sticky;
+    top: 0;
+    z-index: 20;
     order: 1;
     width: 100%;
+    padding: 0 0 10px;
+    background:
+      linear-gradient(to bottom, rgba(245, 245, 247, 0.96), rgba(245, 245, 247, 0.78) 72%, rgba(245, 245, 247, 0));
+    backdrop-filter: blur(18px);
   }
 
   .control-rail {
@@ -758,18 +756,55 @@ body[data-mode="free"] .grid-only {
   }
 
   .canvas-toolbar {
-    margin-bottom: 10px;
+    position: absolute;
+    top: 9px;
+    right: 9px;
+    z-index: 2;
+    margin-bottom: 0;
+  }
+
+  .canvas-toolbar .button.subtle {
+    width: auto;
+    min-height: 30px;
+    padding: 0 10px;
+    border-color: rgba(255, 255, 255, 0.74);
+    background: rgba(255, 255, 255, 0.74);
+    color: var(--ink);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1);
+    backdrop-filter: blur(18px);
   }
 
   .canvas-frame {
     min-height: auto;
-    padding: 12px;
-    border-radius: 24px;
+    padding: 9px;
+    border-radius: 22px;
+    box-shadow: 0 16px 42px rgba(15, 23, 42, 0.12);
   }
 
   #collageCanvas {
-    max-height: 58vh;
+    max-height: none;
     border-radius: 18px;
+    box-shadow:
+      0 16px 40px rgba(15, 23, 42, 0.22),
+      0 0 0 1px rgba(255, 255, 255, 0.42);
+  }
+
+  .tool-section {
+    padding: 10px;
+  }
+
+  .section-heading {
+    min-height: 26px;
+    margin-bottom: 7px;
+  }
+
+  .segmented {
+    padding: 3px;
+  }
+
+  .segment,
+  .chip {
+    min-height: 32px;
   }
 
   .ratio-grid {
@@ -779,6 +814,22 @@ body[data-mode="free"] .grid-only {
   .chip {
     padding: 0 4px;
     font-size: 11px;
+  }
+
+  .layout-grid {
+    gap: 7px;
+  }
+
+  .layout-button {
+    min-height: 44px;
+  }
+
+  .range-row {
+    min-height: 34px;
+  }
+
+  .swatch-row {
+    min-height: 36px;
   }
 }
 
