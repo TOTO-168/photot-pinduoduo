@@ -496,14 +496,15 @@ function resizeCanvas() {
 function syncMobileStageLock() {
   if (window.innerWidth > 760) {
     document.documentElement.style.removeProperty("--mobile-stage-top");
-    document.documentElement.style.removeProperty("--mobile-stage-space");
+    document.documentElement.style.removeProperty("--mobile-fixed-stack-space");
     return;
   }
 
-  const topbarHeight = Math.ceil(els.topbar.getBoundingClientRect().height);
+  const topbarBottom = Math.ceil(els.topbar.getBoundingClientRect().bottom);
   const stageHeight = Math.ceil(els.stageArea.getBoundingClientRect().height);
-  document.documentElement.style.setProperty("--mobile-stage-top", `${topbarHeight + 8}px`);
-  document.documentElement.style.setProperty("--mobile-stage-space", `${stageHeight + 12}px`);
+  const stageTop = topbarBottom + 8;
+  document.documentElement.style.setProperty("--mobile-stage-top", `${stageTop}px`);
+  document.documentElement.style.setProperty("--mobile-fixed-stack-space", `${stageTop + stageHeight + 12}px`);
 }
 
 function scheduleRender() {

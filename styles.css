@@ -809,15 +809,18 @@ body[data-mode="free"] .grid-only {
   }
 
   .topbar {
-    position: sticky;
-    top: 0;
-    z-index: 30;
+    position: fixed;
+    top: max(12px, env(safe-area-inset-top));
+    left: max(12px, env(safe-area-inset-left));
+    right: max(12px, env(safe-area-inset-right));
+    z-index: 35;
     align-items: center;
     flex-direction: row;
-    margin-bottom: 10px;
-    padding-bottom: 8px;
-    background: linear-gradient(to bottom, rgba(245, 245, 247, 0.98), rgba(245, 245, 247, 0.78));
-    backdrop-filter: blur(18px);
+    width: auto;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    backdrop-filter: none;
   }
 
   .brand-block {
@@ -844,7 +847,7 @@ body[data-mode="free"] .grid-only {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    padding-top: var(--mobile-stage-space, 0);
+    padding-top: var(--mobile-fixed-stack-space, 0);
   }
 
   .stage-area {
