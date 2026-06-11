@@ -27,20 +27,16 @@
         </div>
 
         <div class="top-actions">
-          <label class="button primary" for="photoInput" title="加入照片">
-            <span class="button-icon">+</span>
-            <span>照片</span>
-          </label>
           <input id="photoInput" type="file" accept="image/*" multiple hidden />
-
-          <button class="button ghost" id="downloadPng" type="button" title="下載 PNG">
-            <span class="button-icon">↓</span>
-            <span>PNG</span>
-          </button>
-          <button class="button ghost" id="downloadJpg" type="button" title="下載 JPG">
-            <span class="button-icon">↓</span>
-            <span>JPG</span>
-          </button>
+          <div class="export-control">
+            <button class="button primary" id="exportToggle" type="button" aria-expanded="false">
+              輸出
+            </button>
+            <div class="export-menu" id="exportMenu" hidden>
+              <button type="button" data-export-format="png">PNG</button>
+              <button type="button" data-export-format="jpg">JPG</button>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -61,10 +57,15 @@
               <span>比例</span>
             </div>
             <div class="ratio-grid" id="ratioButtons" aria-label="畫布比例">
-              <button class="chip is-active" data-ratio="1:1" type="button">1:1</button>
-              <button class="chip" data-ratio="4:5" type="button">4:5</button>
-              <button class="chip" data-ratio="9:16" type="button">9:16</button>
-              <button class="chip" data-ratio="16:9" type="button">16:9</button>
+              <button class="chip is-active" data-ratio="1:1" type="button" title="1080 x 1080">1:1</button>
+              <button class="chip" data-ratio="4:5" type="button" title="1080 x 1350">4:5</button>
+              <button class="chip" data-ratio="9:16" type="button" title="1080 x 1920">9:16</button>
+              <button class="chip" data-ratio="16:9" type="button" title="1920 x 1080">16:9</button>
+              <button class="chip" data-ratio="facebook" type="button" title="1200 x 630">FB</button>
+              <button class="chip" data-ratio="pinterest" type="button" title="1000 x 1500">Pinterest</button>
+              <button class="chip" data-ratio="x-post" type="button" title="1600 x 900">X</button>
+              <button class="chip" data-ratio="a4" type="button" title="2480 x 3508">A4</button>
+              <button class="chip" data-ratio="a3" type="button" title="3508 x 4961">A3</button>
               <button class="chip" data-ratio="custom" type="button">自訂</button>
             </div>
             <div class="custom-size" id="customSize">
@@ -166,6 +167,7 @@
             <button class="button subtle" id="clearDemo" type="button">清空範例</button>
           </div>
           <div class="canvas-frame" id="canvasFrame">
+            <label class="canvas-add-button" for="photoInput" title="加入照片" aria-label="加入照片">+</label>
             <canvas id="collageCanvas" aria-label="Photot拼多多預覽"></canvas>
           </div>
         </section>

@@ -1,9 +1,14 @@
 const MAX_PHOTOS = 20;
 const EXPORT_PRESETS = {
-  "1:1": [1800, 1800],
-  "4:5": [1800, 2250],
-  "9:16": [1440, 2560],
-  "16:9": [2560, 1440],
+  "1:1": [1080, 1080],
+  "4:5": [1080, 1350],
+  "9:16": [1080, 1920],
+  "16:9": [1920, 1080],
+  facebook: [1200, 630],
+  pinterest: [1000, 1500],
+  "x-post": [1600, 900],
+  a4: [2480, 3508],
+  a3: [3508, 4961],
 };
 
 const state = {
@@ -47,8 +52,9 @@ const els = {
   removePhoto: document.querySelector("#removePhoto"),
   resetPhoto: document.querySelector("#resetPhoto"),
   shuffleLayout: document.querySelector("#shuffleLayout"),
-  downloadPng: document.querySelector("#downloadPng"),
-  downloadJpg: document.querySelector("#downloadJpg"),
+  exportToggle: document.querySelector("#exportToggle"),
+  exportMenu: document.querySelector("#exportMenu"),
+  exportOptions: document.querySelectorAll("[data-export-format]"),
 };
 
 let preview = { width: 0, height: 0, dpr: 1 };
@@ -457,8 +463,9 @@ function resizeCanvas() {
   const padX = parseFloat(frameStyle.paddingLeft) + parseFloat(frameStyle.paddingRight);
   const padY = parseFloat(frameStyle.paddingTop) + parseFloat(frameStyle.paddingBottom);
   const isMobile = window.innerWidth <= 760;
-  const mobilePreviewRatio = window.innerHeight < 740 ? 0.36 : 0.4;
-  const availableW = Math.max(180, els.canvasFrame.clientWidth - padX);
+  const mobilePreviewRatio = window.innerHeight < 740 ? 0.5 : 0.58;
+  const frameWidthSource = isMobile ? els.canvasFrame.parentElement.clientWidth : els.canvasFrame.clientWidth;
+  const availableW = Math.max(180, frameWidthSource - padX);
   const availableH = Math.max(180, window.innerHeight * (isMobile ? mobilePreviewRatio : 0.76) - padY);
   let width = Math.min(availableW, 880);
   let height = width / aspect;
@@ -505,8 +512,8 @@ function updateControls() {
   els.clearDemo.textContent = hasOnlyDemoPhotos() ? "清空範例" : "清空照片";
   els.clearDemo.disabled = state.photos.length === 0;
   els.customSize.classList.toggle("is-open", state.ratio === "custom");
-  els.downloadPng.disabled = state.photos.length === 0;
-  els.downloadJpg.disabled = state.photos.length === 0;
+  els.exportToggle.disabled = state.photos.length === 0;
+  if (state.photos.length === 0) closeExportMenu();
 
   updateButtons("[data-mode]", state.mode, "mode");
   updateButtons("[data-ratio]", state.ratio, "ratio");
@@ -842,6 +849,18 @@ function exportCollage(format) {
   );
 }
 
+function toggleExportMenu() {
+  if (!state.photos.length) return;
+  const nextOpen = els.exportMenu.hidden;
+  els.exportMenu.hidden = !nextOpen;
+  els.exportToggle.setAttribute("aria-expanded", String(nextOpen));
+}
+
+function closeExportMenu() {
+  els.exportMenu.hidden = true;
+  els.exportToggle.setAttribute("aria-expanded", "false");
+}
+
 function bindEvents() {
   els.input.addEventListener("change", (event) => {
     addFiles(event.target.files);
@@ -915,8 +934,18 @@ function bindEvents() {
     scheduleRender();
   });
 
-  els.downloadPng.addEventListener("click", () => exportCollage("png"));
-  els.downloadJpg.addEventListener("click", () => exportCollage("jpg"));
+  els.exportToggle.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleExportMenu();
+  });
+
+  els.exportOptions.forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      exportCollage(button.dataset.exportFormat);
+      closeExportMenu();
+    });
+  });
 
   els.canvas.addEventListener("pointerdown", startCanvasDrag);
   els.canvas.addEventListener("pointermove", moveCanvasDrag);
@@ -928,11 +957,16 @@ function bindEvents() {
   window.addEventListener("resize", scheduleRender);
 
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeExportMenu();
     if (event.key === "Delete" || event.key === "Backspace") {
       const activeTag = document.activeElement?.tagName;
       if (activeTag === "INPUT") return;
       removeSelected();
     }
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".export-control")) closeExportMenu();
   });
 
   document.addEventListener("dragover", (event) => event.preventDefault());

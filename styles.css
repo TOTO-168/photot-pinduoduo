@@ -142,6 +142,41 @@ h1 {
   gap: 9px;
 }
 
+.export-control {
+  position: relative;
+}
+
+.export-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  display: grid;
+  min-width: 138px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.74);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.16);
+  backdrop-filter: blur(22px);
+}
+
+.export-menu button {
+  min-height: 38px;
+  border-radius: 11px;
+  color: var(--ink);
+  background: transparent;
+  font-weight: 700;
+  text-align: left;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.export-menu button:hover {
+  background: rgba(0, 122, 255, 0.1);
+  color: var(--accent);
+}
+
 .button,
 .chip,
 .segment,
@@ -235,18 +270,21 @@ h1 {
 .control-rail {
   display: grid;
   gap: 5px;
+  min-width: 0;
   padding: 10px;
 }
 
 .photo-strip {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   max-height: calc(100vh - 112px);
   padding: 12px;
   overflow: hidden;
 }
 
 .tool-section {
+  min-width: 0;
   padding: 12px;
   border-radius: 16px;
 }
@@ -299,6 +337,7 @@ h1 {
 .ratio-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
+  min-width: 0;
   gap: 7px;
 }
 
@@ -540,6 +579,7 @@ button:disabled:hover {
 }
 
 .canvas-frame {
+  position: relative;
   display: grid;
   place-items: center;
   min-height: min(72vh, 820px);
@@ -551,6 +591,34 @@ button:disabled:hover {
     linear-gradient(135deg, rgba(0, 122, 255, 0.08), rgba(255, 45, 85, 0.08));
   box-shadow: var(--shadow);
   backdrop-filter: blur(30px);
+}
+
+.canvas-add-button {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  border-radius: 999px;
+  color: #fff;
+  background: linear-gradient(180deg, #2f9aff, #007aff);
+  box-shadow: 0 12px 28px rgba(0, 122, 255, 0.24);
+  cursor: pointer;
+  font-size: 26px;
+  line-height: 1;
+  user-select: none;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.canvas-add-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 34px rgba(0, 122, 255, 0.28);
 }
 
 #collageCanvas {
@@ -576,6 +644,8 @@ button:disabled:hover {
 
 .thumb-list {
   display: grid;
+  min-width: 0;
+  max-width: 100%;
   gap: 9px;
   overflow: auto;
   padding-right: 3px;
@@ -690,7 +760,9 @@ body[data-mode="free"] .grid-only {
 
   .thumb-list {
     display: flex;
+    width: 100%;
     overflow-x: auto;
+    overflow-y: hidden;
     padding-bottom: 4px;
   }
 
@@ -706,20 +778,35 @@ body[data-mode="free"] .grid-only {
   }
 
   .topbar {
-    align-items: flex-start;
-    flex-direction: column;
-    margin-bottom: 12px;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    align-items: center;
+    flex-direction: row;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    background: linear-gradient(to bottom, rgba(245, 245, 247, 0.98), rgba(245, 245, 247, 0.78));
+    backdrop-filter: blur(18px);
+  }
+
+  .brand-block {
+    flex: 1 1 auto;
   }
 
   .top-actions {
-    width: 100%;
-    display: grid;
-    grid-template-columns: 1.2fr 1fr 1fr;
+    flex: 0 0 auto;
+    width: auto;
+    display: flex;
+    justify-content: flex-end;
   }
 
   .button {
-    width: 100%;
+    width: auto;
     padding: 0 10px;
+  }
+
+  .export-control .button {
+    min-width: 74px;
   }
 
   .workspace {
@@ -730,14 +817,11 @@ body[data-mode="free"] .grid-only {
 
   .stage-area {
     position: sticky;
-    top: 0;
+    top: 64px;
     z-index: 20;
     order: 1;
     width: 100%;
     padding: 0 0 10px;
-    background:
-      linear-gradient(to bottom, rgba(245, 245, 247, 0.96), rgba(245, 245, 247, 0.78) 72%, rgba(245, 245, 247, 0));
-    backdrop-filter: blur(18px);
   }
 
   .control-rail {
@@ -746,6 +830,12 @@ body[data-mode="free"] .grid-only {
     order: 2;
     width: 100%;
     box-shadow: 0 18px 46px rgba(15, 23, 42, 0.1);
+  }
+
+  .control-rail button,
+  .control-rail input,
+  .control-rail label {
+    scroll-margin-top: min(72vh, 620px);
   }
 
   .photo-strip {
@@ -775,10 +865,21 @@ body[data-mode="free"] .grid-only {
   }
 
   .canvas-frame {
+    width: fit-content;
+    max-width: 100%;
+    margin: 0 auto;
     min-height: auto;
     padding: 9px;
     border-radius: 22px;
     box-shadow: 0 16px 42px rgba(15, 23, 42, 0.12);
+  }
+
+  .canvas-add-button {
+    top: 9px;
+    left: 9px;
+    width: 34px;
+    height: 34px;
+    font-size: 24px;
   }
 
   #collageCanvas {
@@ -808,10 +909,19 @@ body[data-mode="free"] .grid-only {
   }
 
   .ratio-grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 2px 2px 7px;
+    scrollbar-width: none;
   }
 
   .chip {
+    flex: 0 0 auto;
+    min-width: 58px;
     padding: 0 4px;
     font-size: 11px;
   }
@@ -837,14 +947,6 @@ body[data-mode="free"] .grid-only {
   .brand-mark {
     width: 38px;
     height: 38px;
-  }
-
-  .top-actions {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .button.primary {
-    grid-column: 1 / -1;
   }
 
   .range-row {
