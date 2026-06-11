@@ -1,20 +1,71 @@
 const MAX_PHOTOS = 20;
-const EXPORT_PRESETS = {
-  "1:1": [1080, 1080],
-  "4:5": [1080, 1350],
-  instagram: [1080, 1350],
-  "9:16": [1080, 1920],
-  "16:9": [1920, 1080],
-  facebook: [1200, 630],
-  pinterest: [1000, 1500],
-  "x-post": [1600, 900],
-  a4: [2480, 3508],
-  a3: [3508, 4961],
-};
+const SOCIAL_PLATFORMS = [
+  {
+    id: "instagram",
+    variants: [
+      { id: "instagram-portrait", label: "貼文直式", size: "1080 x 1350", width: 1080, height: 1350 },
+      { id: "instagram-square", label: "正方形", size: "1080 x 1080", width: 1080, height: 1080 },
+      { id: "instagram-landscape", label: "橫式", size: "1080 x 566", width: 1080, height: 566 },
+      { id: "instagram-story", label: "限動 / Reels", size: "1080 x 1920", width: 1080, height: 1920 },
+    ],
+  },
+  {
+    id: "facebook",
+    variants: [
+      { id: "facebook-portrait", label: "貼文直式", size: "1080 x 1350", width: 1080, height: 1350 },
+      { id: "facebook-square", label: "正方形", size: "1080 x 1080", width: 1080, height: 1080 },
+      { id: "facebook-link", label: "橫式 / 連結", size: "1200 x 630", width: 1200, height: 630 },
+      { id: "facebook-story", label: "限動", size: "1080 x 1920", width: 1080, height: 1920 },
+    ],
+  },
+  {
+    id: "threads",
+    variants: [
+      { id: "threads-portrait", label: "貼文直式", size: "1080 x 1350", width: 1080, height: 1350 },
+      { id: "threads-square", label: "正方形", size: "1080 x 1080", width: 1080, height: 1080 },
+      { id: "threads-landscape", label: "橫式", size: "1200 x 628", width: 1200, height: 628 },
+    ],
+  },
+  {
+    id: "x",
+    variants: [{ id: "x-post", label: "貼文", size: "1200 x 675", width: 1200, height: 675 }],
+  },
+  {
+    id: "tiktok",
+    variants: [{ id: "tiktok-photo", label: "Photo Mode", size: "1080 x 1920", width: 1080, height: 1920 }],
+  },
+  {
+    id: "linkedin",
+    variants: [
+      { id: "linkedin-portrait", label: "貼文直式", size: "1080 x 1350", width: 1080, height: 1350 },
+      { id: "linkedin-square", label: "正方形", size: "1080 x 1080", width: 1080, height: 1080 },
+      { id: "linkedin-link", label: "連結圖", size: "1200 x 627", width: 1200, height: 627 },
+    ],
+  },
+  {
+    id: "pinterest",
+    variants: [{ id: "pinterest-pin", label: "標準 Pin", size: "1000 x 1500", width: 1000, height: 1500 }],
+  },
+  {
+    id: "youtube",
+    variants: [
+      { id: "youtube-community", label: "社群貼文", size: "1200 x 1200", width: 1200, height: 1200 },
+      { id: "youtube-banner", label: "頻道橫幅", size: "2560 x 1440", width: 2560, height: 1440 },
+    ],
+  },
+];
+const DEFAULT_PLATFORM = "instagram";
+const DEFAULT_RATIO = "instagram-square";
+const EXPORT_PRESETS = Object.fromEntries(
+  SOCIAL_PLATFORMS.flatMap((platform) =>
+    platform.variants.map((variant) => [variant.id, [variant.width, variant.height]]),
+  ),
+);
 
 const state = {
   mode: "grid",
-  ratio: "1:1",
+  platform: DEFAULT_PLATFORM,
+  ratio: DEFAULT_RATIO,
   customWidth: 1600,
   customHeight: 1600,
   layout: "auto",
@@ -35,6 +86,7 @@ const els = {
   stageArea: document.querySelector(".stage-area"),
   thumbList: document.querySelector("#thumbList"),
   clearDemo: document.querySelector("#clearDemo"),
+  ratioSubmenu: document.querySelector("#ratioSubmenu"),
   customSize: document.querySelector("#customSize"),
   customWidth: document.querySelector("#customWidth"),
   customHeight: document.querySelector("#customHeight"),
@@ -65,6 +117,8 @@ let rafId = 0;
 let dragState = null;
 let draggedThumbId = null;
 let thumbsDirty = true;
+let ratioSubmenuKey = "";
+let stableMobileViewport = { width: 0, height: 0 };
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -78,6 +132,31 @@ function selectedPhoto() {
   return state.photos.find((photo) => photo.id === state.selectedId) || state.photos[0] || null;
 }
 
+function platformById(platformId) {
+  return SOCIAL_PLATFORMS.find((platform) => platform.id === platformId) || SOCIAL_PLATFORMS[0];
+}
+
+function platformForRatio(ratio) {
+  return SOCIAL_PLATFORMS.find((platform) => platform.variants.some((variant) => variant.id === ratio)) || null;
+}
+
+function mobileViewportHeight() {
+  if (window.innerWidth > 760) return window.innerHeight;
+
+  const width = Math.round(window.innerWidth);
+  const height = Math.round(window.innerHeight);
+  const widthChanged = Math.abs(width - stableMobileViewport.width) > 24;
+  const orientationChanged = stableMobileViewport.height && Math.abs(height - stableMobileViewport.height) > 180;
+  if (!stableMobileViewport.height || widthChanged || orientationChanged) {
+    stableMobileViewport = { width, height };
+  }
+  return stableMobileViewport.height;
+}
+
+function resetMobileViewportLock() {
+  stableMobileViewport = { width: 0, height: 0 };
+}
+
 function getExportSize() {
   if (state.ratio === "custom") {
     return {
@@ -86,7 +165,7 @@ function getExportSize() {
     };
   }
 
-  const [width, height] = EXPORT_PRESETS[state.ratio] || EXPORT_PRESETS["1:1"];
+  const [width, height] = EXPORT_PRESETS[state.ratio] || EXPORT_PRESETS[DEFAULT_RATIO];
   return { width, height };
 }
 
@@ -466,10 +545,11 @@ function resizeCanvas() {
   const padX = parseFloat(frameStyle.paddingLeft) + parseFloat(frameStyle.paddingRight);
   const padY = parseFloat(frameStyle.paddingTop) + parseFloat(frameStyle.paddingBottom);
   const isMobile = window.innerWidth <= 760;
-  const mobilePreviewRatio = window.innerHeight < 740 ? 0.5 : 0.58;
+  const viewportHeight = isMobile ? mobileViewportHeight() : window.innerHeight;
+  const mobilePreviewRatio = viewportHeight < 740 ? 0.5 : 0.58;
   const frameWidthSource = isMobile ? els.canvasFrame.parentElement.clientWidth : els.canvasFrame.clientWidth;
   const availableW = Math.max(180, frameWidthSource - padX);
-  const availableH = Math.max(180, window.innerHeight * (isMobile ? mobilePreviewRatio : 0.76) - padY);
+  const availableH = Math.max(180, viewportHeight * (isMobile ? mobilePreviewRatio : 0.76) - padY);
   let width = Math.min(availableW, 880);
   let height = width / aspect;
 
@@ -496,6 +576,7 @@ function resizeCanvas() {
 function syncMobileStageLock() {
   if (window.innerWidth > 760) {
     document.documentElement.style.removeProperty("--mobile-stage-top");
+    document.documentElement.style.removeProperty("--mobile-fixed-stack-height");
     document.documentElement.style.removeProperty("--mobile-fixed-stack-space");
     return;
   }
@@ -504,7 +585,8 @@ function syncMobileStageLock() {
   const stageHeight = Math.ceil(els.stageArea.getBoundingClientRect().height);
   const stageTop = topbarBottom + 8;
   document.documentElement.style.setProperty("--mobile-stage-top", `${stageTop}px`);
-  document.documentElement.style.setProperty("--mobile-fixed-stack-space", `${stageTop + stageHeight + 12}px`);
+  document.documentElement.style.setProperty("--mobile-fixed-stack-height", `${stageTop + stageHeight}px`);
+  document.documentElement.style.setProperty("--mobile-fixed-stack-space", `${stageTop + stageHeight + 16}px`);
 }
 
 function scheduleRender() {
@@ -521,6 +603,42 @@ function updateButtons(selector, activeValue, dataKey) {
   });
 }
 
+function renderRatioSubmenu() {
+  const platform = platformById(state.platform);
+  const key = state.ratio === "custom" ? "custom" : `${platform.id}:${state.ratio}`;
+  if (key === ratioSubmenuKey) return;
+
+  ratioSubmenuKey = key;
+  els.ratioSubmenu.replaceChildren();
+  els.ratioSubmenu.hidden = state.ratio === "custom";
+  if (els.ratioSubmenu.hidden) return;
+
+  platform.variants.forEach((variant) => {
+    const button = document.createElement("button");
+    button.className = "variant-chip";
+    button.type = "button";
+    button.dataset.ratio = variant.id;
+    button.title = variant.size;
+    button.classList.toggle("is-active", variant.id === state.ratio);
+
+    const label = document.createElement("span");
+    label.textContent = variant.label;
+    const size = document.createElement("small");
+    size.textContent = variant.size;
+    button.append(label, size);
+
+    button.addEventListener("click", () => setRatio(variant.id));
+    els.ratioSubmenu.append(button);
+  });
+}
+
+function syncRatioButtons() {
+  document.querySelectorAll("[data-platform]").forEach((button) => {
+    button.classList.toggle("is-active", state.ratio !== "custom" && button.dataset.platform === state.platform);
+  });
+  updateButtons("[data-ratio]", state.ratio, "ratio");
+}
+
 function hasOnlyDemoPhotos() {
   return state.photos.length > 0 && state.photos.every((photo) => photo.source === "demo");
 }
@@ -533,8 +651,9 @@ function updateControls() {
   els.exportToggle.disabled = state.photos.length === 0;
   if (state.photos.length === 0) closeExportMenu();
 
+  renderRatioSubmenu();
   updateButtons("[data-mode]", state.mode, "mode");
-  updateButtons("[data-ratio]", state.ratio, "ratio");
+  syncRatioButtons();
   updateButtons("[data-layout]", state.layout, "layout");
   document.querySelectorAll(".swatch").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.color === state.background);
@@ -689,8 +808,21 @@ function setMode(mode) {
   scheduleRender();
 }
 
+function setPlatform(platformId) {
+  const platform = platformById(platformId);
+  state.platform = platform.id;
+  if (!platform.variants.some((variant) => variant.id === state.ratio)) {
+    state.ratio = platform.variants[0].id;
+  }
+  closeExportMenu();
+  scheduleRender();
+}
+
 function setRatio(ratio) {
   state.ratio = ratio;
+  const platform = platformForRatio(ratio);
+  if (platform) state.platform = platform.id;
+  closeExportMenu();
   scheduleRender();
 }
 
@@ -893,6 +1025,10 @@ function bindEvents() {
     button.addEventListener("click", () => setMode(button.dataset.mode));
   });
 
+  document.querySelectorAll("[data-platform]").forEach((button) => {
+    button.addEventListener("click", () => setPlatform(button.dataset.platform));
+  });
+
   document.querySelectorAll("[data-ratio]").forEach((button) => {
     button.addEventListener("click", () => {
       closeExportMenu();
@@ -980,7 +1116,10 @@ function bindEvents() {
   els.canvas.addEventListener("dblclick", resetSelected);
 
   window.addEventListener("resize", scheduleRender);
-  window.visualViewport?.addEventListener("resize", scheduleRender);
+  window.addEventListener("orientationchange", () => {
+    resetMobileViewportLock();
+    scheduleRender();
+  });
   window.addEventListener("scroll", closeExportMenu, { passive: true });
 
   document.addEventListener("keydown", (event) => {

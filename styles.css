@@ -183,6 +183,7 @@ h1 {
 
 .button,
 .chip,
+.variant-chip,
 .segment,
 .layout-button,
 .icon-button {
@@ -198,6 +199,7 @@ h1 {
 
 .button:active,
 .chip:active,
+.variant-chip:active,
 .segment:active,
 .layout-button:active,
 .icon-button:active {
@@ -369,6 +371,48 @@ h1 {
   border-color: rgba(0, 122, 255, 0.26);
   color: var(--accent);
   background: rgba(0, 122, 255, 0.11);
+}
+
+.ratio-submenu {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.ratio-submenu[hidden] {
+  display: none;
+}
+
+.variant-chip {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  min-width: 0;
+  min-height: 48px;
+  padding: 6px 8px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 14px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.54);
+  font-size: 12px;
+  font-weight: 750;
+  text-align: center;
+}
+
+.variant-chip small {
+  margin-top: 2px;
+  color: rgba(107, 114, 128, 0.84);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.1;
+}
+
+.variant-chip.is-active {
+  border-color: rgba(0, 122, 255, 0.3);
+  color: var(--accent);
+  background: rgba(0, 122, 255, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(0, 122, 255, 0.08);
 }
 
 .custom-size {
@@ -567,6 +611,7 @@ output {
 .icon-button:hover,
 .layout-button:hover,
 .chip:hover,
+.variant-chip:hover,
 .button:hover {
   transform: translateY(-1px);
 }
@@ -658,8 +703,6 @@ button:disabled:hover {
   cursor: grab;
   touch-action: none;
   transition:
-    width 240ms ease,
-    height 240ms ease,
     border-radius 180ms ease,
     box-shadow 180ms ease;
 }
@@ -808,6 +851,21 @@ body[data-mode="free"] .grid-only {
       max(12px, env(safe-area-inset-left));
   }
 
+  .app-shell::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: 0;
+    z-index: 18;
+    height: var(--mobile-fixed-stack-height, 0);
+    background:
+      radial-gradient(circle at 8% 8%, rgba(0, 122, 255, 0.08), transparent 15rem),
+      radial-gradient(circle at 94% 8%, rgba(52, 199, 89, 0.07), transparent 14rem),
+      linear-gradient(to bottom, rgba(245, 245, 247, 0.96) 0%, rgba(245, 245, 247, 0.94) calc(100% - 22px), rgba(245, 245, 247, 0));
+    pointer-events: none;
+  }
+
   .topbar {
     position: fixed;
     top: max(12px, env(safe-area-inset-top));
@@ -855,12 +913,12 @@ body[data-mode="free"] .grid-only {
     top: var(--mobile-stage-top, 62px);
     left: max(12px, env(safe-area-inset-left));
     right: max(12px, env(safe-area-inset-right));
-    z-index: 20;
+    z-index: 25;
     order: 1;
     width: auto;
     padding: 0 0 12px;
-    background: linear-gradient(to bottom, rgba(245, 245, 247, 0.96), rgba(245, 245, 247, 0.9) 72%, rgba(245, 245, 247, 0));
-    backdrop-filter: blur(18px);
+    background: transparent;
+    backdrop-filter: none;
   }
 
   .control-rail {
