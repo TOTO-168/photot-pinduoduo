@@ -151,7 +151,7 @@ h1 {
   top: calc(100% + 8px);
   right: 0;
   z-index: 40;
-  display: grid;
+  display: none;
   min-width: 138px;
   padding: 6px;
   border: 1px solid rgba(255, 255, 255, 0.74);
@@ -161,8 +161,8 @@ h1 {
   backdrop-filter: blur(22px);
 }
 
-.export-menu[hidden] {
-  display: none;
+.export-menu.is-open {
+  display: grid;
 }
 
 .export-menu button {
@@ -624,12 +624,22 @@ button:disabled:hover {
   background: linear-gradient(180deg, #2f9aff, #007aff);
   box-shadow: 0 12px 28px rgba(0, 122, 255, 0.24);
   cursor: pointer;
-  font-size: 26px;
-  line-height: 1;
+  font-size: 0;
+  line-height: 0;
   user-select: none;
   transition:
     transform 180ms ease,
     box-shadow 180ms ease;
+}
+
+.canvas-add-button::before {
+  content: "+";
+  display: block;
+  color: #fff;
+  font-size: 28px;
+  font-weight: 500;
+  line-height: 1;
+  transform: translateY(-1px);
 }
 
 .canvas-add-button:hover {

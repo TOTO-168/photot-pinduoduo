@@ -868,14 +868,18 @@ function exportCollage(format) {
 
 function toggleExportMenu() {
   if (!state.photos.length) return;
-  const nextOpen = els.exportMenu.hidden;
-  els.exportMenu.hidden = !nextOpen;
-  els.exportToggle.setAttribute("aria-expanded", String(nextOpen));
+  setExportMenuOpen(!els.exportMenu.classList.contains("is-open"));
 }
 
 function closeExportMenu() {
-  els.exportMenu.hidden = true;
-  els.exportToggle.setAttribute("aria-expanded", "false");
+  setExportMenuOpen(false);
+}
+
+function setExportMenuOpen(isOpen) {
+  els.exportMenu.hidden = !isOpen;
+  els.exportMenu.classList.toggle("is-open", isOpen);
+  els.exportMenu.setAttribute("aria-hidden", String(!isOpen));
+  els.exportToggle.setAttribute("aria-expanded", String(isOpen));
 }
 
 function bindEvents() {
@@ -889,7 +893,10 @@ function bindEvents() {
   });
 
   document.querySelectorAll("[data-ratio]").forEach((button) => {
-    button.addEventListener("click", () => setRatio(button.dataset.ratio));
+    button.addEventListener("click", () => {
+      closeExportMenu();
+      setRatio(button.dataset.ratio);
+    });
   });
 
   document.querySelectorAll("[data-layout]").forEach((button) => {
@@ -973,6 +980,7 @@ function bindEvents() {
 
   window.addEventListener("resize", scheduleRender);
   window.visualViewport?.addEventListener("resize", scheduleRender);
+  window.addEventListener("scroll", closeExportMenu, { passive: true });
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeExportMenu();
@@ -987,6 +995,14 @@ function bindEvents() {
     if (!event.target.closest(".export-control")) closeExportMenu();
   });
 
+  document.addEventListener(
+    "pointerdown",
+    (event) => {
+      if (!event.target.closest(".export-control")) closeExportMenu();
+    },
+    true,
+  );
+
   document.addEventListener("dragover", (event) => event.preventDefault());
   document.addEventListener("drop", (event) => {
     event.preventDefault();
@@ -996,6 +1012,7 @@ function bindEvents() {
 
 async function init() {
   bindEvents();
+  closeExportMenu();
   state.photos = await createDemoPhotos();
   state.selectedId = state.photos[0]?.id || null;
   thumbsDirty = true;
