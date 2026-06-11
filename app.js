@@ -2,6 +2,7 @@ const MAX_PHOTOS = 20;
 const EXPORT_PRESETS = {
   "1:1": [1080, 1080],
   "4:5": [1080, 1350],
+  instagram: [1080, 1350],
   "9:16": [1080, 1920],
   "16:9": [1920, 1080],
   facebook: [1200, 630],
@@ -27,9 +28,11 @@ const state = {
 
 const els = {
   body: document.body,
+  topbar: document.querySelector(".topbar"),
   input: document.querySelector("#photoInput"),
   canvas: document.querySelector("#collageCanvas"),
   canvasFrame: document.querySelector("#canvasFrame"),
+  stageArea: document.querySelector(".stage-area"),
   thumbList: document.querySelector("#thumbList"),
   clearDemo: document.querySelector("#clearDemo"),
   customSize: document.querySelector("#customSize"),
@@ -487,6 +490,20 @@ function resizeCanvas() {
   const ctx = els.canvas.getContext("2d");
   ctx.setTransform(preview.dpr, 0, 0, preview.dpr, 0, 0);
   drawCollage(ctx, preview.width, preview.height);
+  syncMobileStageLock();
+}
+
+function syncMobileStageLock() {
+  if (window.innerWidth > 760) {
+    document.documentElement.style.removeProperty("--mobile-stage-top");
+    document.documentElement.style.removeProperty("--mobile-stage-space");
+    return;
+  }
+
+  const topbarHeight = Math.ceil(els.topbar.getBoundingClientRect().height);
+  const stageHeight = Math.ceil(els.stageArea.getBoundingClientRect().height);
+  document.documentElement.style.setProperty("--mobile-stage-top", `${topbarHeight + 8}px`);
+  document.documentElement.style.setProperty("--mobile-stage-space", `${stageHeight + 12}px`);
 }
 
 function scheduleRender() {
@@ -955,6 +972,7 @@ function bindEvents() {
   els.canvas.addEventListener("dblclick", resetSelected);
 
   window.addEventListener("resize", scheduleRender);
+  window.visualViewport?.addEventListener("resize", scheduleRender);
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeExportMenu();
