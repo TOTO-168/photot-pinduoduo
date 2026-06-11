@@ -44,20 +44,11 @@
         <aside class="control-rail" aria-label="拼圖控制">
           <section class="tool-section">
             <div class="section-heading">
-              <span>模式</span>
-            </div>
-            <div class="segmented" role="tablist" aria-label="拼圖模式">
-              <button class="segment is-active" data-mode="grid" type="button">模板</button>
-              <button class="segment" data-mode="free" type="button">自由</button>
-            </div>
-          </section>
-
-          <section class="tool-section">
-            <div class="section-heading">
               <span>比例</span>
             </div>
             <div class="ratio-grid" id="ratioButtons" aria-label="社群平台">
-              <button class="chip is-active" data-platform="instagram" type="button">IG</button>
+              <button class="chip is-active" data-platform="common" type="button">常用</button>
+              <button class="chip" data-platform="instagram" type="button">IG</button>
               <button class="chip" data-platform="facebook" type="button">FB</button>
               <button class="chip" data-platform="threads" type="button">Threads</button>
               <button class="chip" data-platform="x" type="button">X</button>
@@ -149,16 +140,6 @@
               <input id="zoomRange" type="range" min="100" max="260" value="100" />
               <output id="zoomValue">100</output>
             </label>
-            <label class="range-row free-only">
-              <span>大小</span>
-              <input id="sizeRange" type="range" min="12" max="96" value="42" />
-              <output id="sizeValue">42</output>
-            </label>
-            <label class="range-row free-only">
-              <span>旋轉</span>
-              <input id="rotateRange" type="range" min="-45" max="45" value="0" />
-              <output id="rotateValue">0</output>
-            </label>
           </section>
         </aside>
 
@@ -171,14 +152,6 @@
             <canvas id="collageCanvas" aria-label="Photot拼多多預覽"></canvas>
           </div>
         </section>
-
-        <aside class="photo-strip" aria-label="照片列表">
-          <div class="section-heading">
-            <span>圖層</span>
-            <button class="icon-button" id="resetPhoto" type="button" title="重設照片位置">⌁</button>
-          </div>
-          <div class="thumb-list" id="thumbList"></div>
-        </aside>
       </main>
     </div>
 

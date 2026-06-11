@@ -1,6 +1,17 @@
 const MAX_PHOTOS = 20;
 const SOCIAL_PLATFORMS = [
   {
+    id: "common",
+    variants: [
+      { id: "common-square", label: "1:1", size: "1080 x 1080", width: 1080, height: 1080 },
+      { id: "common-portrait", label: "4:5", size: "1080 x 1350", width: 1080, height: 1350 },
+      { id: "common-story", label: "9:16", size: "1080 x 1920", width: 1080, height: 1920 },
+      { id: "common-landscape", label: "16:9", size: "1920 x 1080", width: 1920, height: 1080 },
+      { id: "common-a4", label: "A4", size: "2480 x 3508", width: 2480, height: 3508 },
+      { id: "common-a3", label: "A3", size: "3508 x 4961", width: 3508, height: 4961 },
+    ],
+  },
+  {
     id: "instagram",
     variants: [
       { id: "instagram-portrait", label: "貼文直式", size: "1080 x 1350", width: 1080, height: 1350 },
@@ -54,8 +65,8 @@ const SOCIAL_PLATFORMS = [
     ],
   },
 ];
-const DEFAULT_PLATFORM = "instagram";
-const DEFAULT_RATIO = "instagram-square";
+const DEFAULT_PLATFORM = "common";
+const DEFAULT_RATIO = "common-square";
 const EXPORT_PRESETS = Object.fromEntries(
   SOCIAL_PLATFORMS.flatMap((platform) =>
     platform.variants.map((variant) => [variant.id, [variant.width, variant.height]]),
@@ -63,7 +74,6 @@ const EXPORT_PRESETS = Object.fromEntries(
 );
 
 const state = {
-  mode: "grid",
   platform: DEFAULT_PLATFORM,
   ratio: DEFAULT_RATIO,
   customWidth: 1600,
@@ -84,7 +94,6 @@ const els = {
   canvas: document.querySelector("#collageCanvas"),
   canvasFrame: document.querySelector("#canvasFrame"),
   stageArea: document.querySelector(".stage-area"),
-  thumbList: document.querySelector("#thumbList"),
   clearDemo: document.querySelector("#clearDemo"),
   ratioSubmenu: document.querySelector("#ratioSubmenu"),
   customSize: document.querySelector("#customSize"),
@@ -98,14 +107,9 @@ const els = {
   borderValue: document.querySelector("#borderValue"),
   zoomRange: document.querySelector("#zoomRange"),
   zoomValue: document.querySelector("#zoomValue"),
-  sizeRange: document.querySelector("#sizeRange"),
-  sizeValue: document.querySelector("#sizeValue"),
-  rotateRange: document.querySelector("#rotateRange"),
-  rotateValue: document.querySelector("#rotateValue"),
   moveBack: document.querySelector("#moveBack"),
   moveNext: document.querySelector("#moveNext"),
   removePhoto: document.querySelector("#removePhoto"),
-  resetPhoto: document.querySelector("#resetPhoto"),
   shuffleLayout: document.querySelector("#shuffleLayout"),
   exportToggle: document.querySelector("#exportToggle"),
   exportMenu: document.querySelector("#exportMenu"),
@@ -115,8 +119,6 @@ const els = {
 let preview = { width: 0, height: 0, dpr: 1 };
 let rafId = 0;
 let dragState = null;
-let draggedThumbId = null;
-let thumbsDirty = true;
 let ratioSubmenuKey = "";
 let stableMobileViewport = { width: 0, height: 0 };
 
@@ -187,8 +189,6 @@ function createImage(src) {
 }
 
 function photoDefaults(img, index, source, name, src) {
-  const angle = index * 0.82;
-  const ring = 0.16 + (index % 3) * 0.035;
   return {
     id: uid(),
     name,
@@ -198,12 +198,6 @@ function photoDefaults(img, index, source, name, src) {
     zoom: 1,
     offsetX: 0,
     offsetY: 0,
-    free: {
-      x: clamp(0.5 + Math.cos(angle) * ring, 0.14, 0.86),
-      y: clamp(0.5 + Math.sin(angle) * ring, 0.16, 0.84),
-      size: 0.42,
-      rotation: (index % 5) * 4 - 8,
-    },
   };
 }
 
@@ -450,58 +444,6 @@ function drawPhotoFrame(ctx, photo, frame, canvasWidth, canvasHeight, exporting 
   strokeFrame(ctx, frame, radius, border, photo.id === state.selectedId, exporting);
 }
 
-function freeFrameFor(photo, width, height) {
-  const frameW = clamp(photo.free.size, 0.1, 1.2) * width;
-  const ratio = photo.img.height / photo.img.width;
-  const frameH = frameW * ratio;
-  return {
-    x: photo.free.x * width - frameW / 2,
-    y: photo.free.y * height - frameH / 2,
-    w: frameW,
-    h: frameH,
-    cx: photo.free.x * width,
-    cy: photo.free.y * height,
-    rotation: (photo.free.rotation * Math.PI) / 180,
-  };
-}
-
-function drawFreePhoto(ctx, photo, width, height, exporting = false) {
-  const frame = freeFrameFor(photo, width, height);
-  const radius = Math.min(scaledSetting(state.radius, width, height), frame.w / 2, frame.h / 2);
-  const border = scaledSetting(state.border, width, height);
-
-  ctx.save();
-  ctx.translate(frame.cx, frame.cy);
-  ctx.rotate(frame.rotation);
-  const localFrame = { x: -frame.w / 2, y: -frame.h / 2, w: frame.w, h: frame.h };
-  roundedRect(ctx, localFrame.x, localFrame.y, frame.w, frame.h, radius);
-  ctx.clip();
-  ctx.fillStyle = "#e5e7eb";
-  ctx.fillRect(localFrame.x, localFrame.y, frame.w, frame.h);
-  const metrics = coverImageMetrics(photo, localFrame);
-  ctx.drawImage(photo.img, metrics.x, metrics.y, metrics.drawW, metrics.drawH);
-  ctx.restore();
-
-  if (border > 0 || (photo.id === state.selectedId && !exporting)) {
-    ctx.save();
-    ctx.translate(frame.cx, frame.cy);
-    ctx.rotate(frame.rotation);
-    if (border > 0) {
-      roundedRect(ctx, -frame.w / 2 + border / 2, -frame.h / 2 + border / 2, frame.w - border, frame.h - border, radius);
-      ctx.lineWidth = border;
-      ctx.strokeStyle = "rgba(255,255,255,0.88)";
-      ctx.stroke();
-    }
-    if (photo.id === state.selectedId && !exporting) {
-      roundedRect(ctx, -frame.w / 2 - 4, -frame.h / 2 - 4, frame.w + 8, frame.h + 8, radius + 5);
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = "#007aff";
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-}
-
 function drawEmptyState(ctx, width, height) {
   const frames = makeAutoFrames(6, width, height, Math.min(scaledSetting(state.gap || 18, width, height), Math.min(width, height) / 10));
   ctx.save();
@@ -524,11 +466,6 @@ function drawCollage(ctx, width, height, options = {}) {
 
   if (!state.photos.length) {
     drawEmptyState(ctx, width, height);
-    return;
-  }
-
-  if (state.mode === "free") {
-    state.photos.forEach((photo) => drawFreePhoto(ctx, photo, width, height, exporting));
     return;
   }
 
@@ -644,7 +581,6 @@ function hasOnlyDemoPhotos() {
 }
 
 function updateControls() {
-  els.body.dataset.mode = state.mode;
   els.clearDemo.textContent = hasOnlyDemoPhotos() ? "清空範例" : "清空照片";
   els.clearDemo.disabled = state.photos.length === 0;
   els.customSize.classList.toggle("is-open", state.ratio === "custom");
@@ -652,7 +588,6 @@ function updateControls() {
   if (state.photos.length === 0) closeExportMenu();
 
   renderRatioSubmenu();
-  updateButtons("[data-mode]", state.mode, "mode");
   syncRatioButtons();
   updateButtons("[data-layout]", state.layout, "layout");
   document.querySelectorAll(".swatch").forEach((button) => {
@@ -670,105 +605,14 @@ function updateControls() {
 
   const photo = selectedPhoto();
   const hasPhoto = Boolean(photo);
-  [els.zoomRange, els.sizeRange, els.rotateRange, els.moveBack, els.moveNext, els.removePhoto, els.resetPhoto].forEach((control) => {
+  [els.zoomRange, els.moveBack, els.moveNext, els.removePhoto].forEach((control) => {
     control.disabled = !hasPhoto;
   });
 
   if (photo) {
     els.zoomRange.value = Math.round(photo.zoom * 100);
     els.zoomValue.value = Math.round(photo.zoom * 100);
-    els.sizeRange.value = Math.round(photo.free.size * 100);
-    els.sizeValue.value = Math.round(photo.free.size * 100);
-    els.rotateRange.value = Math.round(photo.free.rotation);
-    els.rotateValue.value = Math.round(photo.free.rotation);
   }
-
-  if (thumbsDirty) {
-    renderThumbs();
-    thumbsDirty = false;
-  } else {
-    syncThumbState();
-  }
-}
-
-function renderThumbs() {
-  els.thumbList.replaceChildren();
-  state.photos.forEach((photo, index) => {
-    const item = document.createElement("button");
-    item.className = "thumb";
-    item.type = "button";
-    item.draggable = true;
-    item.dataset.id = photo.id;
-    item.classList.toggle("is-selected", photo.id === state.selectedId);
-
-    const image = document.createElement("img");
-    image.src = photo.src;
-    image.alt = "";
-
-    const text = document.createElement("span");
-    const name = document.createElement("span");
-    name.className = "thumb-name";
-    name.textContent = photo.name;
-    const meta = document.createElement("span");
-    meta.className = "thumb-meta";
-    meta.textContent = `${index + 1} / ${state.photos.length}`;
-    text.append(name, meta);
-
-    const grip = document.createElement("span");
-    grip.className = "drag-dot";
-    grip.setAttribute("aria-hidden", "true");
-    grip.textContent = "⋮";
-
-    item.append(image, text, grip);
-
-    item.addEventListener("click", () => {
-      state.selectedId = photo.id;
-      scheduleRender();
-    });
-
-    item.addEventListener("dragstart", (event) => {
-      draggedThumbId = photo.id;
-      item.classList.add("is-dragging");
-      event.dataTransfer.effectAllowed = "move";
-      event.dataTransfer.setData("text/plain", photo.id);
-    });
-
-    item.addEventListener("dragend", () => {
-      draggedThumbId = null;
-      item.classList.remove("is-dragging");
-    });
-
-    item.addEventListener("dragover", (event) => {
-      event.preventDefault();
-      event.dataTransfer.dropEffect = "move";
-    });
-
-    item.addEventListener("drop", (event) => {
-      event.preventDefault();
-      const fromId = draggedThumbId || event.dataTransfer.getData("text/plain");
-      if (!fromId || fromId === photo.id) return;
-      reorderPhoto(fromId, photo.id);
-    });
-
-    els.thumbList.append(item);
-  });
-}
-
-function syncThumbState() {
-  els.thumbList.querySelectorAll(".thumb").forEach((item) => {
-    item.classList.toggle("is-selected", item.dataset.id === state.selectedId);
-  });
-}
-
-function reorderPhoto(fromId, toId) {
-  const fromIndex = state.photos.findIndex((photo) => photo.id === fromId);
-  const toIndex = state.photos.findIndex((photo) => photo.id === toId);
-  if (fromIndex < 0 || toIndex < 0) return;
-  const [photo] = state.photos.splice(fromIndex, 1);
-  state.photos.splice(toIndex, 0, photo);
-  state.selectedId = photo.id;
-  thumbsDirty = true;
-  scheduleRender();
 }
 
 async function addFiles(fileList) {
@@ -778,7 +622,6 @@ async function addFiles(fileList) {
   if (hasOnlyDemoPhotos()) {
     state.photos = [];
     state.selectedId = null;
-    thumbsDirty = true;
   }
 
   const availableSlots = MAX_PHOTOS - state.photos.length;
@@ -794,17 +637,11 @@ async function addFiles(fileList) {
       const photo = photoDefaults(img, state.photos.length, "user", file.name || `照片 ${state.photos.length + 1}`, src);
       state.photos.push(photo);
       state.selectedId = photo.id;
-      thumbsDirty = true;
     } catch {
       URL.revokeObjectURL(src);
     }
   }
 
-  scheduleRender();
-}
-
-function setMode(mode) {
-  state.mode = mode;
   scheduleRender();
 }
 
@@ -830,8 +667,6 @@ function setSelectedNumber(key, value) {
   const photo = selectedPhoto();
   if (!photo) return;
   if (key === "zoom") photo.zoom = clamp(value, 1, 2.6);
-  if (key === "size") photo.free.size = clamp(value, 0.12, 0.96);
-  if (key === "rotation") photo.free.rotation = clamp(value, -45, 45);
   scheduleRender();
 }
 
@@ -842,7 +677,6 @@ function moveSelected(step) {
   if (nextIndex === index) return;
   const [photo] = state.photos.splice(index, 1);
   state.photos.splice(nextIndex, 0, photo);
-  thumbsDirty = true;
   scheduleRender();
 }
 
@@ -852,7 +686,6 @@ function removeSelected() {
   const [removed] = state.photos.splice(index, 1);
   if (removed.source === "user") URL.revokeObjectURL(removed.src);
   state.selectedId = state.photos[Math.min(index, state.photos.length - 1)]?.id || null;
-  thumbsDirty = true;
   scheduleRender();
 }
 
@@ -862,8 +695,6 @@ function resetSelected() {
   photo.zoom = 1;
   photo.offsetX = 0;
   photo.offsetY = 0;
-  photo.free.size = 0.42;
-  photo.free.rotation = 0;
   scheduleRender();
 }
 
@@ -872,7 +703,6 @@ function shufflePhotos() {
     const swap = Math.floor(Math.random() * (index + 1));
     [state.photos[index], state.photos[swap]] = [state.photos[swap], state.photos[index]];
   }
-  thumbsDirty = true;
   scheduleRender();
 }
 
@@ -895,33 +725,16 @@ function hitGrid(point) {
   return null;
 }
 
-function hitFree(point) {
-  for (let index = state.photos.length - 1; index >= 0; index -= 1) {
-    const photo = state.photos[index];
-    const frame = freeFrameFor(photo, preview.width, preview.height);
-    const dx = point.x - frame.cx;
-    const dy = point.y - frame.cy;
-    const cos = Math.cos(-frame.rotation);
-    const sin = Math.sin(-frame.rotation);
-    const localX = dx * cos - dy * sin;
-    const localY = dx * sin + dy * cos;
-    if (Math.abs(localX) <= frame.w / 2 && Math.abs(localY) <= frame.h / 2) {
-      return { photo, frame };
-    }
-  }
-  return null;
-}
-
 function startCanvasDrag(event) {
   if (!state.photos.length) return;
   const point = canvasPoint(event);
-  const hit = state.mode === "free" ? hitFree(point) : hitGrid(point);
+  const hit = hitGrid(point);
   if (!hit) return;
 
   state.selectedId = hit.photo.id;
   dragState = {
     id: hit.photo.id,
-    type: state.mode === "free" ? "free-move" : "grid-pan",
+    type: "grid-pan",
     lastX: point.x,
     lastY: point.y,
     frame: hit.frame,
@@ -939,13 +752,8 @@ function moveCanvasDrag(event) {
   const dx = point.x - dragState.lastX;
   const dy = point.y - dragState.lastY;
 
-  if (dragState.type === "free-move") {
-    photo.free.x = clamp(photo.free.x + dx / preview.width, -0.3, 1.3);
-    photo.free.y = clamp(photo.free.y + dy / preview.height, -0.3, 1.3);
-  } else {
-    photo.offsetX = clamp(photo.offsetX + dx / Math.max(1, dragState.frame.w), -0.9, 0.9);
-    photo.offsetY = clamp(photo.offsetY + dy / Math.max(1, dragState.frame.h), -0.9, 0.9);
-  }
+  photo.offsetX = clamp(photo.offsetX + dx / Math.max(1, dragState.frame.w), -0.9, 0.9);
+  photo.offsetY = clamp(photo.offsetY + dy / Math.max(1, dragState.frame.h), -0.9, 0.9);
 
   dragState.lastX = point.x;
   dragState.lastY = point.y;
@@ -1021,10 +829,6 @@ function bindEvents() {
     event.target.value = "";
   });
 
-  document.querySelectorAll("[data-mode]").forEach((button) => {
-    button.addEventListener("click", () => setMode(button.dataset.mode));
-  });
-
   document.querySelectorAll("[data-platform]").forEach((button) => {
     button.addEventListener("click", () => setPlatform(button.dataset.platform));
   });
@@ -1076,13 +880,10 @@ function bindEvents() {
   });
 
   els.zoomRange.addEventListener("input", () => setSelectedNumber("zoom", Number(els.zoomRange.value) / 100));
-  els.sizeRange.addEventListener("input", () => setSelectedNumber("size", Number(els.sizeRange.value) / 100));
-  els.rotateRange.addEventListener("input", () => setSelectedNumber("rotation", Number(els.rotateRange.value)));
 
   els.moveBack.addEventListener("click", () => moveSelected(-1));
   els.moveNext.addEventListener("click", () => moveSelected(1));
   els.removePhoto.addEventListener("click", removeSelected);
-  els.resetPhoto.addEventListener("click", resetSelected);
   els.shuffleLayout.addEventListener("click", shufflePhotos);
 
   els.clearDemo.addEventListener("click", () => {
@@ -1091,7 +892,6 @@ function bindEvents() {
     });
     state.photos = [];
     state.selectedId = null;
-    thumbsDirty = true;
     scheduleRender();
   });
 
@@ -1155,7 +955,6 @@ async function init() {
   closeExportMenu();
   state.photos = await createDemoPhotos();
   state.selectedId = state.photos[0]?.id || null;
-  thumbsDirty = true;
   scheduleRender();
 }
 
