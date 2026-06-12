@@ -1,3 +1,4 @@
+const APP_VERSION = "1.0.1";
 const MAX_PHOTOS = 20;
 const SOCIAL_PLATFORMS = [
   {
@@ -77,6 +78,8 @@ const SELECTION_FRAME_INSET = 3;
 const SELECTION_FRAME_WIDTH = 3.5;
 const CENTER_SNAP_THRESHOLD = 6;
 const EDGE_SNAP_THRESHOLD = 6;
+const FRAME_TRANSITION_MS = 220;
+const GAP_TRANSITION_MS = 120;
 const EXPORT_PRESETS = Object.fromEntries(
   SOCIAL_PLATFORMS.flatMap((platform) =>
     platform.variants.map((variant) => [variant.id, [variant.width, variant.height]]),
@@ -102,6 +105,7 @@ const state = {
 
 const els = {
   body: document.body,
+  appVersion: document.querySelector("#appVersion"),
   topbar: document.querySelector(".topbar"),
   input: document.querySelector("#photoInput"),
   replaceInput: document.querySelector("#replaceInput"),
@@ -147,9 +151,26 @@ let ratioSubmenuKey = "";
 let stableMobileViewport = { width: 0, height: 0 };
 let customSizeEditSnapshot = null;
 let previewTransitionTimer = 0;
+let replaceButtonTrackRaf = 0;
+let lastRenderedFrameSet = { frames: [], width: 0, height: 0, count: 0 };
+let frameTransition = {
+  active: false,
+  pendingDuration: 0,
+  from: [],
+  to: [],
+  width: 0,
+  height: 0,
+  count: 0,
+  start: 0,
+  duration: 0,
+};
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
+}
+
+function easeInOut(value) {
+  return value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2;
 }
 
 function normalizeCustomSize(value) {
@@ -160,6 +181,28 @@ function normalizeCustomSize(value) {
 
 function uid() {
   return globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+}
+
+function cloneFrames(frames) {
+  return frames.map((frame) => ({ ...frame }));
+}
+
+function interpolateFrame(from, to, progress) {
+  return {
+    x: from.x + (to.x - from.x) * progress,
+    y: from.y + (to.y - from.y) * progress,
+    w: from.w + (to.w - from.w) * progress,
+    h: from.h + (to.h - from.h) * progress,
+  };
+}
+
+function sameFrameContext(frameSet, count, width, height) {
+  return (
+    frameSet.count === count &&
+    frameSet.frames.length === count &&
+    Math.abs(frameSet.width - width) < 1 &&
+    Math.abs(frameSet.height - height) < 1
+  );
 }
 
 function isCustomSizeInput(input) {
@@ -329,6 +372,45 @@ function resetMobileViewportLock() {
   stableMobileViewport = { width: 0, height: 0 };
 }
 
+function currentTransitionFrames(now = performance.now()) {
+  if (!frameTransition.active) return null;
+
+  const progress = clamp((now - frameTransition.start) / Math.max(1, frameTransition.duration), 0, 1);
+  const eased = easeInOut(progress);
+  const frames = frameTransition.to.map((frame, index) => interpolateFrame(frameTransition.from[index], frame, eased));
+
+  if (progress >= 1) {
+    frameTransition.active = false;
+    return cloneFrames(frameTransition.to);
+  }
+
+  return frames;
+}
+
+function displayFrames(count, width, height) {
+  const animatedFrames = currentTransitionFrames();
+  if (
+    animatedFrames &&
+    frameTransition.count === count &&
+    Math.abs(frameTransition.width - width) < 1 &&
+    Math.abs(frameTransition.height - height) < 1
+  ) {
+    return animatedFrames;
+  }
+
+  if (sameFrameContext(lastRenderedFrameSet, count, width, height)) {
+    return cloneFrames(lastRenderedFrameSet.frames);
+  }
+
+  return getFrames(count, width, height);
+}
+
+function beginFrameTransition(duration = FRAME_TRANSITION_MS) {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  frameTransition.pendingDuration = Math.max(frameTransition.pendingDuration, duration);
+  trackReplaceButton(duration + 80);
+}
+
 function animatePreviewTransition() {
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
@@ -336,6 +418,7 @@ function animatePreviewTransition() {
   els.canvasFrame.classList.remove("is-preview-transitioning");
   void els.canvasFrame.offsetWidth;
   els.canvasFrame.classList.add("is-preview-transitioning");
+  trackReplaceButton(460);
   previewTransitionTimer = window.setTimeout(() => {
     els.canvasFrame.classList.remove("is-preview-transitioning");
     syncReplaceButton();
@@ -841,6 +924,60 @@ function drawEmptyState(ctx, width, height) {
   ctx.restore();
 }
 
+function startPendingFrameTransition(targetFrames, count, width, height) {
+  if (!frameTransition.pendingDuration) return;
+
+  const duration = frameTransition.pendingDuration;
+  frameTransition.pendingDuration = 0;
+
+  const fromFrames =
+    frameTransition.active &&
+    frameTransition.count === count &&
+    Math.abs(frameTransition.width - width) < 1 &&
+    Math.abs(frameTransition.height - height) < 1
+      ? currentTransitionFrames()
+      : sameFrameContext(lastRenderedFrameSet, count, width, height)
+        ? cloneFrames(lastRenderedFrameSet.frames)
+        : null;
+
+  if (!fromFrames || fromFrames.length !== targetFrames.length) return;
+
+  frameTransition.active = true;
+  frameTransition.from = cloneFrames(fromFrames);
+  frameTransition.to = cloneFrames(targetFrames);
+  frameTransition.width = width;
+  frameTransition.height = height;
+  frameTransition.count = count;
+  frameTransition.start = performance.now();
+  frameTransition.duration = duration;
+}
+
+function framesForCollage(count, width, height, exporting) {
+  const targetFrames = getFrames(count, width, height);
+  if (exporting) return targetFrames;
+
+  startPendingFrameTransition(targetFrames, count, width, height);
+
+  const animatedFrames = currentTransitionFrames();
+  const frames =
+    animatedFrames &&
+    frameTransition.count === count &&
+    Math.abs(frameTransition.width - width) < 1 &&
+    Math.abs(frameTransition.height - height) < 1
+      ? animatedFrames
+      : targetFrames;
+
+  lastRenderedFrameSet = {
+    frames: cloneFrames(frames),
+    width,
+    height,
+    count,
+  };
+
+  if (frameTransition.active) scheduleRender();
+  return frames;
+}
+
 function drawCollage(ctx, width, height, options = {}) {
   const exporting = Boolean(options.exporting);
   ctx.clearRect(0, 0, width, height);
@@ -852,7 +989,7 @@ function drawCollage(ctx, width, height, options = {}) {
     return;
   }
 
-  const frames = getFrames(state.photos.length, width, height);
+  const frames = framesForCollage(state.photos.length, width, height, exporting);
   const demoFontSize = placeholderFontSize(frames, width, height);
   state.photos.forEach((photo, index) => {
     drawPhotoFrame(ctx, photo, frames[index], width, height, exporting, index + 1, demoFontSize);
@@ -1012,7 +1149,7 @@ function syncReplaceButton() {
     return;
   }
 
-  const frames = getFrames(state.photos.length, preview.width, preview.height);
+  const frames = displayFrames(state.photos.length, preview.width, preview.height);
   const frame = frames[selectedIndex];
   if (!frame) {
     els.replacePhotoButton.hidden = true;
@@ -1032,6 +1169,20 @@ function syncReplaceButton() {
   els.replacePhotoButton.style.setProperty("--replace-y", `${Math.round(top)}px`);
   els.replacePhotoButton.hidden = false;
   els.canvasFrame.classList.add("has-selected-photo");
+}
+
+function trackReplaceButton(duration = 300) {
+  cancelAnimationFrame(replaceButtonTrackRaf);
+  const endAt = performance.now() + duration;
+
+  function tick() {
+    syncReplaceButton();
+    if (performance.now() < endAt) {
+      replaceButtonTrackRaf = requestAnimationFrame(tick);
+    }
+  }
+
+  tick();
 }
 
 function updateControls() {
@@ -1196,7 +1347,7 @@ function pointerMidpoint(a, b) {
 function selectedFrame() {
   const selectedIndex = selectedPhotoIndex();
   if (selectedIndex < 0) return null;
-  const frames = getFrames(state.photos.length, preview.width, preview.height);
+  const frames = displayFrames(state.photos.length, preview.width, preview.height);
   return frames[selectedIndex] || null;
 }
 
@@ -1215,7 +1366,7 @@ function syncZoomControls() {
 }
 
 function hitGrid(point) {
-  const frames = getFrames(state.photos.length, preview.width, preview.height);
+  const frames = displayFrames(state.photos.length, preview.width, preview.height);
   for (let index = frames.length - 1; index >= 0; index -= 1) {
     const frame = frames[index];
     if (point.x >= frame.x && point.x <= frame.x + frame.w && point.y >= frame.y && point.y <= frame.y + frame.h) {
@@ -1544,6 +1695,7 @@ function bindEvents() {
   document.querySelectorAll("[data-layout]").forEach((button) => {
     button.addEventListener("click", () => {
       state.layout = button.dataset.layout;
+      beginFrameTransition(FRAME_TRANSITION_MS);
       animatePreviewTransition();
       scheduleRender();
     });
@@ -1553,6 +1705,7 @@ function bindEvents() {
     button.addEventListener("click", () => {
       state.tileOrientation = button.dataset.tileOrientation;
       state.layout = "auto";
+      beginFrameTransition(FRAME_TRANSITION_MS);
       animatePreviewTransition();
       scheduleRender();
     });
@@ -1591,6 +1744,7 @@ function bindEvents() {
 
   els.gapRange.addEventListener("input", () => {
     state.gap = Number(els.gapRange.value);
+    beginFrameTransition(GAP_TRANSITION_MS);
     scheduleRender();
   });
 
@@ -1656,6 +1810,7 @@ function bindEvents() {
 }
 
 async function init() {
+  if (els.appVersion) els.appVersion.textContent = `v${APP_VERSION}`;
   bindEvents();
   closeExportMenu();
   await resetToDemoPhotos();
