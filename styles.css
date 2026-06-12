@@ -60,17 +60,17 @@ button:disabled {
 
 .app-shell {
   min-height: 100vh;
-  padding: max(18px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom))
-    max(18px, env(safe-area-inset-left));
+  padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom))
+    max(14px, env(safe-area-inset-left));
 }
 
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
+  gap: 14px;
   width: min(1480px, 100%);
-  margin: 0 auto 18px;
+  margin: 0 auto 12px;
 }
 
 .brand-block {
@@ -85,8 +85,8 @@ button:disabled {
   grid-template-columns: repeat(2, 1fr);
   gap: 3px;
   flex: 0 0 auto;
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
   padding: 6px;
   border: 1px solid rgba(255, 255, 255, 0.8);
   border-radius: 14px;
@@ -138,8 +138,8 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 9px;
+  flex-wrap: nowrap;
+  gap: 8px;
 }
 
 .export-control {
@@ -184,6 +184,7 @@ h1 {
 .button,
 .chip,
 .variant-chip,
+.control-tab,
 .segment,
 .layout-button,
 .icon-button {
@@ -200,6 +201,7 @@ h1 {
 .button:active,
 .chip:active,
 .variant-chip:active,
+.control-tab:active,
 .segment:active,
 .layout-button:active,
 .icon-button:active {
@@ -210,7 +212,7 @@ h1 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 42px;
+  min-height: 40px;
   gap: 8px;
   padding: 0 15px;
   border: 1px solid var(--line);
@@ -255,8 +257,8 @@ h1 {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(250px, 300px) minmax(0, 1fr);
-  gap: 18px;
+  grid-template-columns: minmax(270px, 320px) minmax(0, 1fr);
+  gap: 14px;
   width: min(1480px, 100%);
   margin: 0 auto;
   align-items: start;
@@ -264,7 +266,7 @@ h1 {
 
 .control-rail {
   position: sticky;
-  top: 18px;
+  top: 14px;
   border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: var(--radius);
   background: var(--surface);
@@ -274,15 +276,37 @@ h1 {
 
 .control-rail {
   display: grid;
-  gap: 5px;
+  gap: 3px;
   min-width: 0;
-  padding: 10px;
+  padding: 8px;
+}
+
+.control-tabs {
+  display: none;
+}
+
+.control-tab {
+  min-width: 0;
+  min-height: 34px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 12px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.54);
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.control-tab.is-active {
+  border-color: rgba(0, 122, 255, 0.26);
+  color: var(--accent);
+  background: rgba(0, 122, 255, 0.11);
 }
 
 .tool-section {
   min-width: 0;
-  padding: 12px;
-  border-radius: 16px;
+  padding: 10px;
+  border-radius: 14px;
 }
 
 .tool-section + .tool-section {
@@ -293,8 +317,8 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 30px;
-  margin-bottom: 9px;
+  min-height: 26px;
+  margin-bottom: 7px;
   gap: 12px;
   color: var(--ink);
   font-size: 13px;
@@ -335,9 +359,9 @@ h1 {
 
 .ratio-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   min-width: 0;
-  gap: 7px;
+  gap: 6px;
 }
 
 .chip {
@@ -345,13 +369,13 @@ h1 {
   align-items: center;
   justify-content: center;
   min-width: 0;
-  min-height: 34px;
-  padding: 0 7px;
+  min-height: 32px;
+  padding: 0 5px;
   border: 1px solid rgba(17, 24, 39, 0.08);
   border-radius: 999px;
   color: var(--muted);
   background: rgba(255, 255, 255, 0.54);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   text-align: center;
   white-space: nowrap;
@@ -365,9 +389,9 @@ h1 {
 
 .ratio-submenu {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 7px;
-  margin-top: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 7px;
 }
 
 .ratio-submenu[hidden] {
@@ -379,13 +403,13 @@ h1 {
   align-content: center;
   justify-items: center;
   min-width: 0;
-  min-height: 48px;
-  padding: 6px 8px;
+  min-height: 42px;
+  padding: 5px 6px;
   border: 1px solid rgba(17, 24, 39, 0.08);
-  border-radius: 14px;
+  border-radius: 12px;
   color: var(--muted);
   background: rgba(255, 255, 255, 0.54);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 750;
   text-align: center;
 }
@@ -422,8 +446,8 @@ h1 {
 }
 
 .custom-size.is-open {
-  max-height: 58px;
-  margin-top: 9px;
+  max-height: 54px;
+  margin-top: 7px;
   opacity: 1;
   transform: translateY(0);
 }
@@ -438,7 +462,7 @@ h1 {
 
 .custom-size input {
   width: 100%;
-  min-height: 36px;
+  min-height: 34px;
   padding: 0 10px;
   border: 1px solid rgba(17, 24, 39, 0.08);
   border-radius: 12px;
@@ -450,7 +474,7 @@ h1 {
 .layout-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+  gap: 7px;
 }
 
 .layout-button,
@@ -476,8 +500,8 @@ h1 {
 
 .layout-icon {
   display: grid;
-  width: 31px;
-  height: 31px;
+  width: 28px;
+  height: 28px;
   gap: 3px;
 }
 
@@ -541,8 +565,8 @@ h1 {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) 32px;
   align-items: center;
-  gap: 9px;
-  min-height: 38px;
+  gap: 8px;
+  min-height: 34px;
   color: var(--muted);
   font-size: 13px;
   font-weight: 650;
@@ -563,8 +587,8 @@ output {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr);
   align-items: center;
-  gap: 9px;
-  min-height: 40px;
+  gap: 8px;
+  min-height: 36px;
   color: var(--muted);
   font-size: 13px;
   font-weight: 650;
@@ -573,7 +597,7 @@ output {
 .swatches {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
-  gap: 7px;
+  gap: 6px;
 }
 
 .swatch {
@@ -591,8 +615,8 @@ output {
 }
 
 .icon-button {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   border-radius: 999px;
   font-size: 16px;
   line-height: 1;
@@ -602,6 +626,7 @@ output {
 .layout-button:hover,
 .chip:hover,
 .variant-chip:hover,
+.control-tab:hover,
 .button:hover {
   transform: translateY(-1px);
 }
@@ -616,24 +641,53 @@ button:disabled:hover {
 
 .stage-area {
   display: grid;
+  gap: 10px;
   justify-items: center;
   min-width: 0;
 }
 
 .canvas-toolbar {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
   gap: 12px;
   width: 100%;
-  margin-bottom: 12px;
+  margin-bottom: 0;
+}
+
+.canvas-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.canvas-meta strong,
+.canvas-meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+}
+
+.canvas-meta strong {
+  color: var(--ink);
 }
 
 .canvas-frame {
   position: relative;
   display: grid;
   place-items: center;
-  min-height: min(72vh, 820px);
+  width: 100%;
+  min-height: min(68vh, 780px);
   padding: clamp(14px, 3vw, 34px);
   border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 28px;
@@ -642,6 +696,23 @@ button:disabled:hover {
     linear-gradient(135deg, rgba(0, 122, 255, 0.08), rgba(255, 45, 85, 0.08));
   box-shadow: var(--shadow);
   backdrop-filter: blur(30px);
+}
+
+.canvas-empty-state {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.canvas-empty-state .button {
+  pointer-events: auto;
+}
+
+.canvas-frame.is-empty .canvas-add-button {
+  display: none;
 }
 
 .canvas-add-button {
@@ -685,7 +756,7 @@ button:disabled:hover {
 #collageCanvas {
   display: block;
   width: min(100%, 820px);
-  max-height: 76vh;
+  max-height: 70vh;
   border-radius: 22px;
   box-shadow:
     0 28px 80px rgba(15, 23, 42, 0.28),
@@ -695,6 +766,108 @@ button:disabled:hover {
   transition:
     border-radius 180ms ease,
     box-shadow 180ms ease;
+}
+
+.thumb-strip {
+  display: flex;
+  width: 100%;
+  min-height: 60px;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 2px 8px;
+  scrollbar-width: none;
+}
+
+.thumb-strip[hidden] {
+  display: none;
+}
+
+.thumb-strip::-webkit-scrollbar,
+.ratio-grid::-webkit-scrollbar,
+.ratio-submenu::-webkit-scrollbar {
+  display: none;
+}
+
+.thumb-button {
+  position: relative;
+  flex: 0 0 54px;
+  width: 54px;
+  height: 54px;
+  overflow: hidden;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.82);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+  cursor: pointer;
+}
+
+.thumb-button img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.thumb-button span {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(17, 24, 39, 0.72);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.thumb-button.is-active {
+  border-color: var(--accent);
+  box-shadow:
+    0 12px 28px rgba(0, 122, 255, 0.18),
+    0 0 0 2px rgba(0, 122, 255, 0.18);
+}
+
+.selected-meta {
+  overflow: hidden;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toast {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 80;
+  max-width: min(320px, calc(100vw - 32px));
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  border-radius: 999px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.18);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+  backdrop-filter: blur(20px);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.toast.is-visible {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 #collageCanvas:active {
@@ -713,14 +886,14 @@ button:disabled:hover {
 
 @media (max-width: 1120px) {
   .workspace {
-    grid-template-columns: minmax(230px, 290px) minmax(0, 1fr);
+    grid-template-columns: minmax(248px, 300px) minmax(0, 1fr);
   }
 }
 
 @media (max-width: 760px) {
   .app-shell {
-    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom))
-      max(12px, env(safe-area-inset-left));
+    padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom))
+      max(10px, env(safe-area-inset-left));
   }
 
   .topbar {
@@ -729,10 +902,29 @@ button:disabled:hover {
     align-items: center;
     flex-direction: row;
     width: 100%;
-    margin: 0 auto 12px;
+    margin: 0 auto 8px;
     padding: 0;
     background: transparent;
     backdrop-filter: none;
+  }
+
+  .brand-block {
+    gap: 9px;
+  }
+
+  .brand-mark {
+    width: 36px;
+    height: 36px;
+    padding: 5px;
+    border-radius: 12px;
+  }
+
+  h1 {
+    font-size: 20px;
+  }
+
+  .brand-block p {
+    display: none;
   }
 
   .brand-block {
@@ -744,21 +936,24 @@ button:disabled:hover {
     width: auto;
     display: flex;
     justify-content: flex-end;
+    gap: 6px;
   }
 
   .button {
     width: auto;
+    min-height: 36px;
     padding: 0 10px;
+    font-size: 13px;
   }
 
   .export-control .button {
-    min-width: 74px;
+    min-width: 78px;
   }
 
   .workspace {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
     padding-top: 0;
   }
 
@@ -767,7 +962,7 @@ button:disabled:hover {
     z-index: 1;
     order: 1;
     width: 100%;
-    padding: 0 0 12px;
+    padding: 0;
     background: transparent;
     backdrop-filter: none;
   }
@@ -777,7 +972,29 @@ button:disabled:hover {
     top: auto;
     order: 2;
     width: 100%;
+    padding: 7px;
     box-shadow: 0 18px 46px rgba(15, 23, 42, 0.1);
+  }
+
+  .control-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    padding: 0 0 7px;
+  }
+
+  .control-tab {
+    min-height: 32px;
+    border-radius: 11px;
+    font-size: 12px;
+  }
+
+  .tool-section {
+    display: none;
+  }
+
+  .tool-section.is-active {
+    display: block;
   }
 
   .control-rail button,
@@ -787,18 +1004,31 @@ button:disabled:hover {
   }
 
   .canvas-toolbar {
-    position: absolute;
-    top: 9px;
-    right: 9px;
+    position: relative;
+    top: auto;
+    right: auto;
     z-index: 2;
-    width: auto;
+    width: 100%;
+    align-items: flex-start;
+    gap: 8px;
     margin-bottom: 0;
+  }
+
+  .canvas-meta {
+    gap: 5px;
+    font-size: 11px;
+  }
+
+  .canvas-meta strong,
+  .canvas-meta span {
+    min-height: 26px;
+    padding: 0 7px;
   }
 
   .canvas-toolbar .button.subtle {
     width: auto;
-    min-height: 30px;
-    padding: 0 10px;
+    min-height: 28px;
+    padding: 0 9px;
     border-color: rgba(255, 255, 255, 0.74);
     background: rgba(255, 255, 255, 0.74);
     color: var(--ink);
@@ -833,7 +1063,7 @@ button:disabled:hover {
   }
 
   .tool-section {
-    padding: 10px;
+    padding: 8px;
   }
 
   .section-heading {
@@ -863,9 +1093,25 @@ button:disabled:hover {
 
   .chip {
     flex: 0 0 auto;
-    min-width: 58px;
+    min-width: 54px;
     padding: 0 4px;
     font-size: 11px;
+  }
+
+  .ratio-submenu {
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 1px 2px 6px;
+    scrollbar-width: none;
+  }
+
+  .variant-chip {
+    flex: 0 0 112px;
+    min-height: 40px;
   }
 
   .layout-grid {
@@ -883,12 +1129,50 @@ button:disabled:hover {
   .swatch-row {
     min-height: 36px;
   }
+
+  .thumb-strip {
+    min-height: 50px;
+    gap: 6px;
+    padding-bottom: 4px;
+  }
+
+  .thumb-button {
+    flex-basis: 46px;
+    width: 46px;
+    height: 46px;
+    border-radius: 10px;
+  }
+
+  .toast {
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    left: 12px;
+    max-width: none;
+    text-align: center;
+  }
 }
 
 @media (max-width: 390px) {
   .brand-mark {
-    width: 38px;
-    height: 38px;
+    width: 34px;
+    height: 34px;
+  }
+
+  h1 {
+    font-size: 18px;
+  }
+
+  .top-actions {
+    gap: 5px;
+  }
+
+  .button {
+    padding: 0 8px;
+    font-size: 12px;
+  }
+
+  .export-control .button {
+    min-width: 68px;
   }
 
   .range-row {

@@ -67,6 +67,17 @@ const SOCIAL_PLATFORMS = [
 ];
 const DEFAULT_PLATFORM = "common";
 const DEFAULT_RATIO = "common-square";
+const PLATFORM_LABELS = {
+  common: "常用",
+  instagram: "IG",
+  facebook: "FB",
+  threads: "Threads",
+  x: "X",
+  tiktok: "TikTok",
+  linkedin: "LinkedIn",
+  pinterest: "Pinterest",
+  youtube: "YouTube",
+};
 const EXPORT_PRESETS = Object.fromEntries(
   SOCIAL_PLATFORMS.flatMap((platform) =>
     platform.variants.map((variant) => [variant.id, [variant.width, variant.height]]),
@@ -85,6 +96,7 @@ const state = {
   background: "#f5f5f7",
   photos: [],
   selectedId: null,
+  activePanel: "ratio",
 };
 
 const els = {
@@ -93,8 +105,16 @@ const els = {
   input: document.querySelector("#photoInput"),
   canvas: document.querySelector("#collageCanvas"),
   canvasFrame: document.querySelector("#canvasFrame"),
+  emptyState: document.querySelector("#emptyState"),
   stageArea: document.querySelector(".stage-area"),
+  controlTabs: document.querySelectorAll("[data-control-tab]"),
+  controlPanels: document.querySelectorAll("[data-control-panel]"),
   clearDemo: document.querySelector("#clearDemo"),
+  photoStrip: document.querySelector("#photoStrip"),
+  presetLabel: document.querySelector("#presetLabel"),
+  presetSize: document.querySelector("#presetSize"),
+  photoCount: document.querySelector("#photoCount"),
+  selectedMeta: document.querySelector("#selectedMeta"),
   ratioSubmenu: document.querySelector("#ratioSubmenu"),
   customSize: document.querySelector("#customSize"),
   customWidth: document.querySelector("#customWidth"),
@@ -119,8 +139,11 @@ const els = {
 let preview = { width: 0, height: 0, dpr: 1 };
 let rafId = 0;
 let dragState = null;
+let draggedPhotoId = null;
 let ratioSubmenuKey = "";
+let photoStripKey = "";
 let stableMobileViewport = { width: 0, height: 0 };
+let toastTimer = 0;
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -140,6 +163,19 @@ function platformById(platformId) {
 
 function platformForRatio(ratio) {
   return SOCIAL_PLATFORMS.find((platform) => platform.variants.some((variant) => variant.id === ratio)) || null;
+}
+
+function currentVariant() {
+  if (state.ratio === "custom") {
+    return {
+      label: "自訂",
+      size: `${state.customWidth} x ${state.customHeight}`,
+      width: state.customWidth,
+      height: state.customHeight,
+    };
+  }
+
+  return platformById(state.platform).variants.find((variant) => variant.id === state.ratio) || platformById(DEFAULT_PLATFORM).variants[0];
 }
 
 function mobileViewportHeight() {
@@ -483,10 +519,11 @@ function resizeCanvas() {
   const padY = parseFloat(frameStyle.paddingTop) + parseFloat(frameStyle.paddingBottom);
   const isMobile = window.innerWidth <= 760;
   const viewportHeight = isMobile ? mobileViewportHeight() : window.innerHeight;
-  const mobilePreviewRatio = viewportHeight < 740 ? 0.5 : 0.58;
+  const mobilePreviewRatio = viewportHeight <= 740 ? 0.42 : 0.47;
+  const desktopPreviewRatio = viewportHeight < 780 ? 0.62 : 0.68;
   const frameWidthSource = isMobile ? els.canvasFrame.parentElement.clientWidth : els.canvasFrame.clientWidth;
   const availableW = Math.max(180, frameWidthSource - padX);
-  const availableH = Math.max(180, viewportHeight * (isMobile ? mobilePreviewRatio : 0.76) - padY);
+  const availableH = Math.max(180, viewportHeight * (isMobile ? mobilePreviewRatio : desktopPreviewRatio) - padY);
   let width = Math.min(availableW, 880);
   let height = width / aspect;
 
@@ -566,6 +603,96 @@ function syncRatioButtons() {
   updateButtons("[data-ratio]", state.ratio, "ratio");
 }
 
+function renderPhotoStrip() {
+  const key = `${state.photos.map((photo) => photo.id).join("|")}:${state.selectedId || ""}`;
+  if (key === photoStripKey) return;
+
+  photoStripKey = key;
+  els.photoStrip.replaceChildren();
+  els.photoStrip.hidden = state.photos.length === 0;
+
+  state.photos.forEach((photo, index) => {
+    const button = document.createElement("button");
+    button.className = "thumb-button";
+    button.type = "button";
+    button.draggable = true;
+    button.title = photo.name;
+    button.dataset.photoId = photo.id;
+    button.classList.toggle("is-active", photo.id === state.selectedId);
+
+    const img = document.createElement("img");
+    img.src = photo.src;
+    img.alt = photo.name;
+    img.draggable = false;
+
+    const indexLabel = document.createElement("span");
+    indexLabel.textContent = index + 1;
+
+    button.append(img, indexLabel);
+    button.addEventListener("click", () => {
+      state.selectedId = photo.id;
+      scheduleRender();
+    });
+    button.addEventListener("dragstart", (event) => {
+      draggedPhotoId = photo.id;
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", photo.id);
+    });
+    button.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+    });
+    button.addEventListener("drop", (event) => {
+      event.preventDefault();
+      reorderPhoto(draggedPhotoId || event.dataTransfer.getData("text/plain"), photo.id);
+      draggedPhotoId = null;
+    });
+    button.addEventListener("dragend", () => {
+      draggedPhotoId = null;
+    });
+
+    els.photoStrip.append(button);
+  });
+}
+
+function reorderPhoto(sourceId, targetId) {
+  if (!sourceId || !targetId || sourceId === targetId) return;
+  const sourceIndex = state.photos.findIndex((photo) => photo.id === sourceId);
+  const targetIndex = state.photos.findIndex((photo) => photo.id === targetId);
+  if (sourceIndex < 0 || targetIndex < 0) return;
+
+  const [photo] = state.photos.splice(sourceIndex, 1);
+  state.photos.splice(targetIndex, 0, photo);
+  state.selectedId = sourceId;
+  showToast("照片順序已更新");
+  scheduleRender();
+}
+
+function updateSummary() {
+  const variant = currentVariant();
+  const { width, height } = getExportSize();
+  const platformLabel = state.ratio === "custom" ? "自訂" : PLATFORM_LABELS[state.platform] || state.platform;
+  const selectedIndex = state.photos.findIndex((photo) => photo.id === state.selectedId);
+  const displayIndex = selectedIndex >= 0 ? selectedIndex + 1 : 1;
+  const photo = selectedPhoto();
+
+  els.presetLabel.textContent = `${platformLabel} · ${variant.label}`;
+  els.presetSize.textContent = `${width} x ${height}`;
+  els.photoCount.textContent = `${state.photos.length} / ${MAX_PHOTOS} 張`;
+  els.canvasFrame.classList.toggle("is-empty", state.photos.length === 0);
+  els.emptyState.hidden = state.photos.length !== 0;
+  els.selectedMeta.textContent = photo ? `第 ${displayIndex} / ${state.photos.length} 張 · ${photo.name}` : "尚未選取";
+}
+
+function syncActivePanel() {
+  els.controlTabs.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.controlTab === state.activePanel);
+  });
+  els.controlPanels.forEach((panel) => {
+    panel.classList.toggle("is-active", panel.dataset.controlPanel === state.activePanel);
+  });
+}
+
 function hasOnlyDemoPhotos() {
   return state.photos.length > 0 && state.photos.every((photo) => photo.source === "demo");
 }
@@ -579,6 +706,9 @@ function updateControls() {
 
   renderRatioSubmenu();
   syncRatioButtons();
+  syncActivePanel();
+  renderPhotoStrip();
+  updateSummary();
   updateButtons("[data-layout]", state.layout, "layout");
   document.querySelectorAll(".swatch").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.color === state.background);
@@ -617,7 +747,7 @@ async function addFiles(fileList) {
   const availableSlots = MAX_PHOTOS - state.photos.length;
   const accepted = files.slice(0, availableSlots);
   if (files.length > availableSlots) {
-    window.alert(`最多一次保留 ${MAX_PHOTOS} 張照片。`);
+    showToast(`最多保留 ${MAX_PHOTOS} 張照片`);
   }
 
   for (const file of accepted) {
@@ -633,6 +763,7 @@ async function addFiles(fileList) {
   }
 
   scheduleRender();
+  if (accepted.length) showToast(`已加入 ${accepted.length} 張照片`);
 }
 
 function setPlatform(platformId) {
@@ -676,6 +807,7 @@ function removeSelected() {
   const [removed] = state.photos.splice(index, 1);
   if (removed.source === "user") URL.revokeObjectURL(removed.src);
   state.selectedId = state.photos[Math.min(index, state.photos.length - 1)]?.id || null;
+  showToast("照片已移除");
   scheduleRender();
 }
 
@@ -791,10 +923,22 @@ function exportCollage(format) {
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
+      showToast(`已下載 ${ext.toUpperCase()}`);
     },
     mime,
     format === "jpg" ? 0.94 : undefined,
   );
+}
+
+function showToast(message) {
+  const toast = document.querySelector("#toast");
+  if (!toast) return;
+  window.clearTimeout(toastTimer);
+  toast.textContent = message;
+  toast.classList.add("is-visible");
+  toastTimer = window.setTimeout(() => {
+    toast.classList.remove("is-visible");
+  }, 1800);
 }
 
 function toggleExportMenu() {
@@ -817,6 +961,13 @@ function bindEvents() {
   els.input.addEventListener("change", (event) => {
     addFiles(event.target.files);
     event.target.value = "";
+  });
+
+  els.controlTabs.forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activePanel = button.dataset.controlTab;
+      syncActivePanel();
+    });
   });
 
   document.querySelectorAll("[data-platform]").forEach((button) => {
@@ -882,6 +1033,7 @@ function bindEvents() {
     });
     state.photos = [];
     state.selectedId = null;
+    showToast("照片已清空");
     scheduleRender();
   });
 

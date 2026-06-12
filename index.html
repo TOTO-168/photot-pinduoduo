@@ -11,7 +11,7 @@
       content="Photot拼多多是一個手機和桌面都能使用的本機照片拼貼工具。"
     />
     <title>Photot拼多多</title>
-    <link rel="stylesheet" href="./styles.css?v=20260612-1329" />
+    <link rel="stylesheet" href="./styles.css?v=20260612-1424" />
   </head>
   <body>
     <div class="app-shell">
@@ -31,9 +31,10 @@
 
         <div class="top-actions">
           <input id="photoInput" type="file" accept="image/*" multiple hidden />
+          <label class="button ghost add-photo-button" for="photoInput">加入照片</label>
           <div class="export-control">
             <button class="button primary" id="exportToggle" type="button" aria-expanded="false">
-              輸出
+              下載圖片
             </button>
             <div class="export-menu" id="exportMenu" hidden>
               <button type="button" data-export-format="png">PNG</button>
@@ -45,7 +46,14 @@
 
       <main class="workspace">
         <aside class="control-rail" aria-label="拼圖控制">
-          <section class="tool-section">
+          <nav class="control-tabs" aria-label="控制分類">
+            <button class="control-tab is-active" data-control-tab="ratio" type="button">比例</button>
+            <button class="control-tab" data-control-tab="layout" type="button">模板</button>
+            <button class="control-tab" data-control-tab="style" type="button">外觀</button>
+            <button class="control-tab" data-control-tab="photo" type="button">照片</button>
+          </nav>
+
+          <section class="tool-section is-active" data-control-panel="ratio">
             <div class="section-heading">
               <span>比例</span>
             </div>
@@ -74,7 +82,7 @@
             </div>
           </section>
 
-          <section class="tool-section grid-only">
+          <section class="tool-section grid-only" data-control-panel="layout">
             <div class="section-heading">
               <span>模板</span>
               <button class="icon-button" id="shuffleLayout" type="button" title="重新排列">
@@ -97,7 +105,7 @@
             </div>
           </section>
 
-          <section class="tool-section">
+          <section class="tool-section" data-control-panel="style">
             <div class="section-heading">
               <span>外觀</span>
             </div>
@@ -129,7 +137,7 @@
             </div>
           </section>
 
-          <section class="tool-section" id="selectedTools">
+          <section class="tool-section" id="selectedTools" data-control-panel="photo">
             <div class="section-heading">
               <span>照片</span>
               <div class="mini-actions">
@@ -138,6 +146,7 @@
                 <button class="icon-button danger" id="removePhoto" type="button" title="移除">×</button>
               </div>
             </div>
+            <div class="selected-meta" id="selectedMeta">尚未選取</div>
             <label class="range-row">
               <span>縮放</span>
               <input id="zoomRange" type="range" min="100" max="260" value="100" />
@@ -148,16 +157,27 @@
 
         <section class="stage-area" aria-label="拼圖畫布">
           <div class="canvas-toolbar">
+            <div class="canvas-meta" aria-live="polite">
+              <strong id="presetLabel">常用 · 1:1</strong>
+              <span id="presetSize">1080 x 1080</span>
+              <span id="photoCount">0 / 20 張</span>
+            </div>
             <button class="button subtle" id="clearDemo" type="button">清空範例</button>
           </div>
           <div class="canvas-frame" id="canvasFrame">
             <label class="canvas-add-button" for="photoInput" title="加入照片" aria-label="加入照片"></label>
+            <div class="canvas-empty-state" id="emptyState">
+              <label class="button primary" for="photoInput">加入照片</label>
+            </div>
             <canvas id="collageCanvas" aria-label="Photot拼多多預覽"></canvas>
           </div>
+          <div class="thumb-strip" id="photoStrip" aria-label="照片縮圖"></div>
         </section>
       </main>
     </div>
 
-    <script src="./app.js?v=20260612-1329"></script>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script src="./app.js?v=20260612-1424"></script>
   </body>
 </html>
