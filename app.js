@@ -67,6 +67,10 @@ const SOCIAL_PLATFORMS = [
 ];
 const DEFAULT_PLATFORM = "common";
 const DEFAULT_RATIO = "common-square";
+const PLACEHOLDER_COLORS = ["#f8fafc", "#eef6ff", "#f3f8ef", "#fff4e6", "#fff0f5", "#f3f0ff"];
+const MIN_FRAME_SIDE_BASE = 24;
+const SELECTION_FRAME_INSET = 3;
+const SELECTION_FRAME_WIDTH = 3.5;
 const EXPORT_PRESETS = Object.fromEntries(
   SOCIAL_PLATFORMS.flatMap((platform) =>
     platform.variants.map((variant) => [variant.id, [variant.width, variant.height]]),
@@ -81,7 +85,6 @@ const state = {
   layout: "auto",
   gap: 18,
   radius: 24,
-  border: 0,
   background: "#f5f5f7",
   photos: [],
   selectedId: null,
@@ -91,6 +94,8 @@ const els = {
   body: document.body,
   topbar: document.querySelector(".topbar"),
   input: document.querySelector("#photoInput"),
+  replaceInput: document.querySelector("#replaceInput"),
+  replacePhotoButton: document.querySelector("#replacePhotoButton"),
   canvas: document.querySelector("#collageCanvas"),
   canvasFrame: document.querySelector("#canvasFrame"),
   stageArea: document.querySelector(".stage-area"),
@@ -103,14 +108,8 @@ const els = {
   gapValue: document.querySelector("#gapValue"),
   radiusRange: document.querySelector("#radiusRange"),
   radiusValue: document.querySelector("#radiusValue"),
-  borderRange: document.querySelector("#borderRange"),
-  borderValue: document.querySelector("#borderValue"),
   zoomRange: document.querySelector("#zoomRange"),
   zoomValue: document.querySelector("#zoomValue"),
-  moveBack: document.querySelector("#moveBack"),
-  moveNext: document.querySelector("#moveNext"),
-  removePhoto: document.querySelector("#removePhoto"),
-  shuffleLayout: document.querySelector("#shuffleLayout"),
   exportToggle: document.querySelector("#exportToggle"),
   exportMenu: document.querySelector("#exportMenu"),
   exportOptions: document.querySelectorAll("[data-export-format]"),
@@ -119,6 +118,7 @@ const els = {
 let preview = { width: 0, height: 0, dpr: 1 };
 let rafId = 0;
 let dragState = null;
+let replaceButtonVisible = false;
 let ratioSubmenuKey = "";
 let stableMobileViewport = { width: 0, height: 0 };
 
@@ -130,8 +130,13 @@ function uid() {
   return globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 }
 
+function selectedPhotoIndex() {
+  return state.photos.findIndex((photo) => photo.id === state.selectedId);
+}
+
 function selectedPhoto() {
-  return state.photos.find((photo) => photo.id === state.selectedId) || state.photos[0] || null;
+  const index = selectedPhotoIndex();
+  return index >= 0 ? state.photos[index] : null;
 }
 
 function platformById(platformId) {
@@ -179,6 +184,10 @@ function scaledSetting(value, width, height) {
   return value * canvasScale(width, height);
 }
 
+function minFrameSide(width, height) {
+  return Math.max(8, MIN_FRAME_SIDE_BASE * canvasScale(width, height));
+}
+
 function createImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -201,74 +210,25 @@ function photoDefaults(img, index, source, name, src) {
   };
 }
 
-function drawSampleScene(ctx, index, width, height) {
-  const palettes = [
-    ["#91c8ff", "#e9f6ff", "#ffb703", "#1565c0"],
-    ["#ffd6e7", "#fff1f6", "#ff2d55", "#6d28d9"],
-    ["#c6f6d5", "#eefdf3", "#34c759", "#166534"],
-    ["#ffe7c2", "#fff7ed", "#ff9f0a", "#7c2d12"],
-    ["#b8f3ff", "#f0fdff", "#00c7be", "#155e75"],
-    ["#d7d2ff", "#f5f3ff", "#5856d6", "#312e81"],
-  ];
-  const [a, b, c, d] = palettes[index % palettes.length];
-  const sky = ctx.createLinearGradient(0, 0, width, height);
-  sky.addColorStop(0, a);
-  sky.addColorStop(1, b);
-  ctx.fillStyle = sky;
+function drawPlaceholderFill(ctx, index, width, height) {
+  ctx.fillStyle = PLACEHOLDER_COLORS[index % PLACEHOLDER_COLORS.length];
   ctx.fillRect(0, 0, width, height);
+}
 
+function drawPlaceholderNumber(ctx, frame, number, fontSize) {
+  const text = String(number);
   ctx.save();
-  ctx.globalAlpha = 0.9;
-  ctx.fillStyle = c;
-  ctx.beginPath();
-  ctx.arc(width * (0.2 + (index % 3) * 0.22), height * 0.22, width * 0.12, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.fillStyle = "rgba(17, 24, 39, 0.72)";
+  ctx.font = `800 ${fontSize}px -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const measuredWidth = ctx.measureText(text).width;
+  const targetWidth = fontSize * 0.62;
+  const scaleX = measuredWidth > 0 ? clamp(targetWidth / measuredWidth, 1, 1.35) : 1;
+  ctx.translate(frame.x + frame.w / 2, frame.y + frame.h / 2);
+  ctx.scale(scaleX, 1);
+  ctx.fillText(text, 0, 0);
   ctx.restore();
-
-  if (index % 3 === 0) {
-    ctx.fillStyle = d;
-    ctx.beginPath();
-    ctx.moveTo(0, height * 0.82);
-    ctx.lineTo(width * 0.28, height * 0.42);
-    ctx.lineTo(width * 0.52, height * 0.82);
-    ctx.lineTo(width * 0.76, height * 0.48);
-    ctx.lineTo(width, height * 0.82);
-    ctx.lineTo(width, height);
-    ctx.lineTo(0, height);
-    ctx.closePath();
-    ctx.fill();
-  } else if (index % 3 === 1) {
-    ctx.fillStyle = "rgba(255,255,255,0.74)";
-    roundedRect(ctx, width * 0.16, height * 0.2, width * 0.68, height * 0.52, 54);
-    ctx.fill();
-    ctx.fillStyle = d;
-    roundedRect(ctx, width * 0.27, height * 0.31, width * 0.46, height * 0.1, 36);
-    ctx.fill();
-    roundedRect(ctx, width * 0.22, height * 0.48, width * 0.56, height * 0.08, 30);
-    ctx.fill();
-    ctx.fillStyle = c;
-    roundedRect(ctx, width * 0.34, height * 0.62, width * 0.32, height * 0.08, 30);
-    ctx.fill();
-  } else {
-    ctx.fillStyle = d;
-    for (let i = 0; i < 7; i += 1) {
-      const x = width * (0.06 + i * 0.14);
-      const h = height * (0.22 + ((i + index) % 4) * 0.08);
-      roundedRect(ctx, x, height - h, width * 0.09, h, 22);
-      ctx.fill();
-    }
-    ctx.fillStyle = "rgba(255,255,255,0.68)";
-    for (let i = 0; i < 12; i += 1) {
-      ctx.fillRect(width * (0.1 + (i % 6) * 0.14), height * (0.58 + Math.floor(i / 6) * 0.12), 18, 18);
-    }
-  }
-
-  const gloss = ctx.createLinearGradient(0, 0, width, 0);
-  gloss.addColorStop(0, "rgba(255,255,255,0.25)");
-  gloss.addColorStop(0.52, "rgba(255,255,255,0)");
-  gloss.addColorStop(1, "rgba(255,255,255,0.2)");
-  ctx.fillStyle = gloss;
-  ctx.fillRect(0, 0, width, height);
 }
 
 async function createDemoPhotos() {
@@ -276,12 +236,12 @@ async function createDemoPhotos() {
   for (let index = 0; index < 6; index += 1) {
     const sampleCanvas = document.createElement("canvas");
     sampleCanvas.width = 900;
-    sampleCanvas.height = index % 2 ? 1120 : 900;
+    sampleCanvas.height = 900;
     const ctx = sampleCanvas.getContext("2d");
-    drawSampleScene(ctx, index, sampleCanvas.width, sampleCanvas.height);
+    drawPlaceholderFill(ctx, index, sampleCanvas.width, sampleCanvas.height);
     const src = sampleCanvas.toDataURL("image/jpeg", 0.92);
     const img = await createImage(src);
-    photos.push(photoDefaults(img, index, "demo", `範例 ${index + 1}`, src));
+    photos.push(photoDefaults(img, index, "demo", `位置 ${index + 1}`, src));
   }
   return photos;
 }
@@ -298,16 +258,20 @@ function roundedRect(ctx, x, y, width, height, radius) {
 }
 
 function gridRect(col, row, colSpan, rowSpan, cols, rows, width, height, gap) {
-  const outer = gap;
+  const minimumFrameSide = Math.min(minFrameSide(width, height), width / cols, height / rows);
+  const maxGapX = Math.max(0, (width - minimumFrameSide * cols) / (cols + 1));
+  const maxGapY = Math.max(0, (height - minimumFrameSide * rows) / (rows + 1));
+  const safeGap = Math.min(gap, maxGapX, maxGapY);
+  const outer = safeGap;
   const innerW = width - outer * 2;
   const innerH = height - outer * 2;
-  const cellW = (innerW - gap * (cols - 1)) / cols;
-  const cellH = (innerH - gap * (rows - 1)) / rows;
+  const cellW = (innerW - safeGap * (cols - 1)) / cols;
+  const cellH = (innerH - safeGap * (rows - 1)) / rows;
   return {
-    x: outer + col * (cellW + gap),
-    y: outer + row * (cellH + gap),
-    w: cellW * colSpan + gap * (colSpan - 1),
-    h: cellH * rowSpan + gap * (rowSpan - 1),
+    x: outer + col * (cellW + safeGap),
+    y: outer + row * (cellH + safeGap),
+    w: cellW * colSpan + safeGap * (colSpan - 1),
+    h: cellH * rowSpan + safeGap * (rowSpan - 1),
   };
 }
 
@@ -409,29 +373,29 @@ function coverImageMetrics(photo, frame) {
   return { x, y, drawW, drawH };
 }
 
-function strokeFrame(ctx, frame, radius, border, selected, exporting) {
-  if (border > 0) {
-    ctx.save();
-    roundedRect(ctx, frame.x + border / 2, frame.y + border / 2, frame.w - border, frame.h - border, radius);
-    ctx.lineWidth = border;
-    ctx.strokeStyle = "rgba(255,255,255,0.88)";
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  if (selected && !exporting) {
-    ctx.save();
-    roundedRect(ctx, frame.x - 4, frame.y - 4, frame.w + 8, frame.h + 8, radius + 5);
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = "#007aff";
-    ctx.stroke();
-    ctx.restore();
-  }
+function strokeSelectedFrame(ctx, frame, photoRadius) {
+  const inset = SELECTION_FRAME_INSET;
+  const radius = Math.min(
+    Math.max(0, photoRadius - inset),
+    Math.max(0, (frame.w - inset * 2) / 2),
+    Math.max(0, (frame.h - inset * 2) / 2),
+  );
+  ctx.save();
+  roundedRect(ctx, frame.x + inset, frame.y + inset, frame.w - inset * 2, frame.h - inset * 2, radius);
+  ctx.lineWidth = SELECTION_FRAME_WIDTH;
+  ctx.strokeStyle = "#007aff";
+  ctx.stroke();
+  ctx.restore();
 }
 
-function drawPhotoFrame(ctx, photo, frame, canvasWidth, canvasHeight, exporting = false) {
+function placeholderFontSize(frames, canvasWidth, canvasHeight) {
+  const smallestFrameSide = frames.reduce((smallest, frame) => Math.min(smallest, frame.w, frame.h), Infinity);
+  const canvasSide = Math.min(canvasWidth, canvasHeight);
+  return Math.round(Math.max(18, Math.min(smallestFrameSide * 0.42, canvasSide * 0.16)));
+}
+
+function drawPhotoFrame(ctx, photo, frame, canvasWidth, canvasHeight, exporting = false, placeholderNumber = null, fontSize = 0) {
   const radius = Math.min(scaledSetting(state.radius, canvasWidth, canvasHeight), frame.w / 2, frame.h / 2);
-  const border = scaledSetting(state.border, canvasWidth, canvasHeight);
   ctx.save();
   roundedRect(ctx, frame.x, frame.y, frame.w, frame.h, radius);
   ctx.clip();
@@ -441,7 +405,9 @@ function drawPhotoFrame(ctx, photo, frame, canvasWidth, canvasHeight, exporting 
   ctx.drawImage(photo.img, metrics.x, metrics.y, metrics.drawW, metrics.drawH);
   ctx.restore();
 
-  strokeFrame(ctx, frame, radius, border, photo.id === state.selectedId, exporting);
+  if (photo.source === "demo" && placeholderNumber !== null) {
+    drawPlaceholderNumber(ctx, frame, placeholderNumber, fontSize);
+  }
 }
 
 function drawEmptyState(ctx, width, height) {
@@ -470,9 +436,17 @@ function drawCollage(ctx, width, height, options = {}) {
   }
 
   const frames = getFrames(state.photos.length, width, height);
+  const demoFontSize = placeholderFontSize(frames, width, height);
   state.photos.forEach((photo, index) => {
-    drawPhotoFrame(ctx, photo, frames[index], width, height, exporting);
+    drawPhotoFrame(ctx, photo, frames[index], width, height, exporting, index + 1, demoFontSize);
   });
+
+  const selectedIndex = selectedPhotoIndex();
+  if (!exporting && selectedIndex >= 0 && frames[selectedIndex]) {
+    const frame = frames[selectedIndex];
+    const photoRadius = Math.min(scaledSetting(state.radius, width, height), frame.w / 2, frame.h / 2);
+    strokeSelectedFrame(ctx, frame, photoRadius);
+  }
 }
 
 function resizeCanvas() {
@@ -507,6 +481,7 @@ function resizeCanvas() {
   const ctx = els.canvas.getContext("2d");
   ctx.setTransform(preview.dpr, 0, 0, preview.dpr, 0, 0);
   drawCollage(ctx, preview.width, preview.height);
+  syncReplaceButton();
   syncMobileStageLock();
 }
 
@@ -570,8 +545,55 @@ function hasOnlyDemoPhotos() {
   return state.photos.length > 0 && state.photos.every((photo) => photo.source === "demo");
 }
 
+function revokeUserPhotoUrls(photos = state.photos) {
+  photos.forEach((photo) => {
+    if (photo.source === "user") URL.revokeObjectURL(photo.src);
+  });
+}
+
+async function resetToDemoPhotos() {
+  els.clearDemo.disabled = true;
+  closeExportMenu();
+  revokeUserPhotoUrls();
+  state.photos = await createDemoPhotos();
+  state.selectedId = null;
+  dragState = null;
+  replaceButtonVisible = false;
+  scheduleRender();
+}
+
+function syncReplaceButton() {
+  const selectedIndex = selectedPhotoIndex();
+  if (!replaceButtonVisible || selectedIndex < 0 || !state.photos.length || !preview.width || !preview.height) {
+    els.replacePhotoButton.hidden = true;
+    els.canvasFrame.classList.remove("has-selected-photo");
+    return;
+  }
+
+  const frames = getFrames(state.photos.length, preview.width, preview.height);
+  const frame = frames[selectedIndex];
+  if (!frame) {
+    els.replacePhotoButton.hidden = true;
+    els.canvasFrame.classList.remove("has-selected-photo");
+    return;
+  }
+
+  const canvasRect = els.canvas.getBoundingClientRect();
+  const frameRect = els.canvasFrame.getBoundingClientRect();
+  const scaleX = canvasRect.width / preview.width;
+  const scaleY = canvasRect.height / preview.height;
+  const inset = Math.min(8, Math.max(4, Math.min(frame.w * scaleX, frame.h * scaleY) * 0.08));
+  const left = canvasRect.left - frameRect.left + frame.x * scaleX + inset;
+  const top = canvasRect.top - frameRect.top + frame.y * scaleY + inset;
+
+  els.replacePhotoButton.style.setProperty("--replace-x", `${Math.round(left)}px`);
+  els.replacePhotoButton.style.setProperty("--replace-y", `${Math.round(top)}px`);
+  els.replacePhotoButton.hidden = false;
+  els.canvasFrame.classList.add("has-selected-photo");
+}
+
 function updateControls() {
-  els.clearDemo.textContent = hasOnlyDemoPhotos() ? "清空範例" : "清空照片";
+  els.clearDemo.textContent = "清除";
   els.clearDemo.disabled = state.photos.length === 0;
   els.customSize.classList.toggle("is-open", state.ratio === "custom");
   els.exportToggle.disabled = state.photos.length === 0;
@@ -588,16 +610,12 @@ function updateControls() {
   els.gapValue.value = state.gap;
   els.radiusRange.value = state.radius;
   els.radiusValue.value = state.radius;
-  els.borderRange.value = state.border;
-  els.borderValue.value = state.border;
   els.customWidth.value = state.customWidth;
   els.customHeight.value = state.customHeight;
 
   const photo = selectedPhoto();
   const hasPhoto = Boolean(photo);
-  [els.zoomRange, els.moveBack, els.moveNext, els.removePhoto].forEach((control) => {
-    control.disabled = !hasPhoto;
-  });
+  els.zoomRange.disabled = !hasPhoto;
 
   if (photo) {
     els.zoomRange.value = Math.round(photo.zoom * 100);
@@ -627,12 +645,35 @@ async function addFiles(fileList) {
       const photo = photoDefaults(img, state.photos.length, "user", file.name || `照片 ${state.photos.length + 1}`, src);
       state.photos.push(photo);
       state.selectedId = photo.id;
+      replaceButtonVisible = true;
     } catch {
       URL.revokeObjectURL(src);
     }
   }
 
   scheduleRender();
+}
+
+async function replaceSelectedPhoto(fileList) {
+  const file = Array.from(fileList).find((item) => item.type.startsWith("image/"));
+  const selectedIndex = selectedPhotoIndex();
+  if (!file || selectedIndex < 0) return;
+
+  const previousPhoto = state.photos[selectedIndex];
+  const src = URL.createObjectURL(file);
+  try {
+    const img = await createImage(src);
+    if (previousPhoto.source === "user") URL.revokeObjectURL(previousPhoto.src);
+
+    const nextPhoto = photoDefaults(img, selectedIndex, "user", file.name || previousPhoto.name || `照片 ${selectedIndex + 1}`, src);
+    nextPhoto.id = previousPhoto.id;
+    state.photos[selectedIndex] = nextPhoto;
+    state.selectedId = nextPhoto.id;
+    replaceButtonVisible = true;
+    scheduleRender();
+  } catch {
+    URL.revokeObjectURL(src);
+  }
 }
 
 function setPlatform(platformId) {
@@ -660,39 +701,12 @@ function setSelectedNumber(key, value) {
   scheduleRender();
 }
 
-function moveSelected(step) {
-  const index = state.photos.findIndex((photo) => photo.id === state.selectedId);
-  if (index < 0) return;
-  const nextIndex = clamp(index + step, 0, state.photos.length - 1);
-  if (nextIndex === index) return;
-  const [photo] = state.photos.splice(index, 1);
-  state.photos.splice(nextIndex, 0, photo);
-  scheduleRender();
-}
-
-function removeSelected() {
-  const index = state.photos.findIndex((photo) => photo.id === state.selectedId);
-  if (index < 0) return;
-  const [removed] = state.photos.splice(index, 1);
-  if (removed.source === "user") URL.revokeObjectURL(removed.src);
-  state.selectedId = state.photos[Math.min(index, state.photos.length - 1)]?.id || null;
-  scheduleRender();
-}
-
 function resetSelected() {
   const photo = selectedPhoto();
   if (!photo) return;
   photo.zoom = 1;
   photo.offsetX = 0;
   photo.offsetY = 0;
-  scheduleRender();
-}
-
-function shufflePhotos() {
-  for (let index = state.photos.length - 1; index > 0; index -= 1) {
-    const swap = Math.floor(Math.random() * (index + 1));
-    [state.photos[index], state.photos[swap]] = [state.photos[swap], state.photos[index]];
-  }
   scheduleRender();
 }
 
@@ -719,9 +733,15 @@ function startCanvasDrag(event) {
   if (!state.photos.length) return;
   const point = canvasPoint(event);
   const hit = hitGrid(point);
-  if (!hit) return;
+  if (!hit) {
+    state.selectedId = null;
+    replaceButtonVisible = false;
+    scheduleRender();
+    return;
+  }
 
   state.selectedId = hit.photo.id;
+  replaceButtonVisible = true;
   dragState = {
     id: hit.photo.id,
     type: "grid-pan",
@@ -819,6 +839,17 @@ function bindEvents() {
     event.target.value = "";
   });
 
+  els.replaceInput.addEventListener("change", (event) => {
+    replaceSelectedPhoto(event.target.files);
+    event.target.value = "";
+  });
+
+  els.replacePhotoButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (selectedPhotoIndex() < 0) return;
+    els.replaceInput.click();
+  });
+
   document.querySelectorAll("[data-platform]").forEach((button) => {
     button.addEventListener("click", () => setPlatform(button.dataset.platform));
   });
@@ -864,26 +895,9 @@ function bindEvents() {
     scheduleRender();
   });
 
-  els.borderRange.addEventListener("input", () => {
-    state.border = Number(els.borderRange.value);
-    scheduleRender();
-  });
-
   els.zoomRange.addEventListener("input", () => setSelectedNumber("zoom", Number(els.zoomRange.value) / 100));
 
-  els.moveBack.addEventListener("click", () => moveSelected(-1));
-  els.moveNext.addEventListener("click", () => moveSelected(1));
-  els.removePhoto.addEventListener("click", removeSelected);
-  els.shuffleLayout.addEventListener("click", shufflePhotos);
-
-  els.clearDemo.addEventListener("click", () => {
-    state.photos.forEach((photo) => {
-      if (photo.source === "user") URL.revokeObjectURL(photo.src);
-    });
-    state.photos = [];
-    state.selectedId = null;
-    scheduleRender();
-  });
+  els.clearDemo.addEventListener("click", resetToDemoPhotos);
 
   els.exportToggle.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -914,11 +928,6 @@ function bindEvents() {
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeExportMenu();
-    if (event.key === "Delete" || event.key === "Backspace") {
-      const activeTag = document.activeElement?.tagName;
-      if (activeTag === "INPUT") return;
-      removeSelected();
-    }
   });
 
   document.addEventListener("click", (event) => {
@@ -943,9 +952,7 @@ function bindEvents() {
 async function init() {
   bindEvents();
   closeExportMenu();
-  state.photos = await createDemoPhotos();
-  state.selectedId = state.photos[0]?.id || null;
-  scheduleRender();
+  await resetToDemoPhotos();
 }
 
 init();

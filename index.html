@@ -11,7 +11,7 @@
       content="Photot拼多多是一個手機和桌面都能使用的本機照片拼貼工具。"
     />
     <title>Photot拼多多</title>
-    <link rel="stylesheet" href="./styles.css?v=20260612-1329" />
+    <link rel="stylesheet" href="./styles.css?v=20260612-1512" />
   </head>
   <body>
     <div class="app-shell">
@@ -31,6 +31,7 @@
 
         <div class="top-actions">
           <input id="photoInput" type="file" accept="image/*" multiple hidden />
+          <input id="replaceInput" type="file" accept="image/*" hidden />
           <div class="export-control">
             <button class="button primary" id="exportToggle" type="button" aria-expanded="false">
               輸出
@@ -46,9 +47,6 @@
       <main class="workspace">
         <aside class="control-rail" aria-label="拼圖控制">
           <section class="tool-section">
-            <div class="section-heading">
-              <span>比例</span>
-            </div>
             <div class="ratio-grid" id="ratioButtons" aria-label="社群平台">
               <button class="chip is-active" data-platform="common" type="button">常用</button>
               <button class="chip" data-platform="instagram" type="button">IG</button>
@@ -75,12 +73,6 @@
           </section>
 
           <section class="tool-section grid-only">
-            <div class="section-heading">
-              <span>模板</span>
-              <button class="icon-button" id="shuffleLayout" type="button" title="重新排列">
-                ↻
-              </button>
-            </div>
             <div class="layout-grid" id="layoutButtons">
               <button class="layout-button is-active" data-layout="auto" type="button" aria-label="自動">
                 <span class="layout-icon auto"></span>
@@ -98,9 +90,6 @@
           </section>
 
           <section class="tool-section">
-            <div class="section-heading">
-              <span>外觀</span>
-            </div>
             <label class="range-row">
               <span>間距</span>
               <input id="gapRange" type="range" min="0" max="64" value="18" />
@@ -112,9 +101,9 @@
               <output id="radiusValue">24</output>
             </label>
             <label class="range-row">
-              <span>邊框</span>
-              <input id="borderRange" type="range" min="0" max="30" value="0" />
-              <output id="borderValue">0</output>
+              <span>縮放</span>
+              <input id="zoomRange" type="range" min="100" max="260" value="100" />
+              <output id="zoomValue">100</output>
             </label>
             <div class="swatch-row">
               <span>背景</span>
@@ -128,36 +117,28 @@
               </div>
             </div>
           </section>
-
-          <section class="tool-section" id="selectedTools">
-            <div class="section-heading">
-              <span>照片</span>
-              <div class="mini-actions">
-                <button class="icon-button" id="moveBack" type="button" title="向前排序">←</button>
-                <button class="icon-button" id="moveNext" type="button" title="向後排序">→</button>
-                <button class="icon-button danger" id="removePhoto" type="button" title="移除">×</button>
-              </div>
-            </div>
-            <label class="range-row">
-              <span>縮放</span>
-              <input id="zoomRange" type="range" min="100" max="260" value="100" />
-              <output id="zoomValue">100</output>
-            </label>
-          </section>
         </aside>
 
         <section class="stage-area" aria-label="拼圖畫布">
           <div class="canvas-toolbar">
-            <button class="button subtle" id="clearDemo" type="button">清空範例</button>
+            <button class="button subtle" id="clearDemo" type="button">清除</button>
           </div>
           <div class="canvas-frame" id="canvasFrame">
             <label class="canvas-add-button" for="photoInput" title="加入照片" aria-label="加入照片"></label>
+            <button
+              class="canvas-replace-button"
+              id="replacePhotoButton"
+              type="button"
+              title="重新匯入"
+              aria-label="重新匯入照片"
+              hidden
+            ></button>
             <canvas id="collageCanvas" aria-label="Photot拼多多預覽"></canvas>
           </div>
         </section>
       </main>
     </div>
 
-    <script src="./app.js?v=20260612-1329"></script>
+    <script src="./app.js?v=20260612-1512"></script>
   </body>
 </html>

@@ -289,23 +289,6 @@ h1 {
   border-top: 1px solid rgba(17, 24, 39, 0.07);
 }
 
-.section-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 30px;
-  margin-bottom: 9px;
-  gap: 12px;
-  color: var(--ink);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.mini-actions {
-  display: flex;
-  gap: 6px;
-}
-
 .segmented {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -644,17 +627,18 @@ button:disabled:hover {
   backdrop-filter: blur(30px);
 }
 
-.canvas-add-button {
+.canvas-add-button,
+.canvas-replace-button {
   position: absolute;
-  top: 12px;
-  left: 12px;
   z-index: 4;
   display: grid;
   place-items: center;
   width: 38px;
   height: 38px;
+  padding: 0;
   border: 1px solid rgba(255, 255, 255, 0.76);
   border-radius: 999px;
+  appearance: none;
   color: #fff;
   background: linear-gradient(180deg, #2f9aff, #007aff);
   box-shadow: 0 12px 28px rgba(0, 122, 255, 0.24);
@@ -667,19 +651,43 @@ button:disabled:hover {
     box-shadow 180ms ease;
 }
 
-.canvas-add-button::before {
-  content: "+";
-  display: block;
-  color: #fff;
-  font-size: 28px;
-  font-weight: 500;
-  line-height: 1;
-  transform: translateY(-1px);
+.canvas-add-button {
+  top: 12px;
+  left: 12px;
 }
 
-.canvas-add-button:hover {
+.canvas-replace-button {
+  top: var(--replace-y, 12px);
+  left: var(--replace-x, 12px);
+  z-index: 5;
+  width: 34px;
+  height: 34px;
+}
+
+.canvas-replace-button[hidden] {
+  display: none;
+}
+
+.canvas-add-button::before,
+.canvas-replace-button::before {
+  content: "";
+  display: block;
+  width: 20px;
+  height: 20px;
+  background: #fff;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v12'/%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3Cpath d='M5 21h14'/%3E%3Cpath d='M5 17v4'/%3E%3Cpath d='M19 17v4'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v12'/%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3Cpath d='M5 21h14'/%3E%3Cpath d='M5 17v4'/%3E%3Cpath d='M19 17v4'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+.canvas-add-button:hover,
+.canvas-replace-button:hover {
   transform: translateY(-1px);
   box-shadow: 0 16px 34px rgba(0, 122, 255, 0.28);
+}
+
+.canvas-frame.has-selected-photo .canvas-add-button {
+  opacity: 0;
+  pointer-events: none;
 }
 
 #collageCanvas {
@@ -816,12 +824,17 @@ button:disabled:hover {
     box-shadow: 0 16px 42px rgba(15, 23, 42, 0.12);
   }
 
-  .canvas-add-button {
+  .canvas-add-button,
+  .canvas-replace-button {
     top: 9px;
     left: 9px;
     width: 34px;
     height: 34px;
-    font-size: 24px;
+  }
+
+  .canvas-replace-button {
+    top: var(--replace-y, 9px);
+    left: var(--replace-x, 9px);
   }
 
   #collageCanvas {
@@ -834,11 +847,6 @@ button:disabled:hover {
 
   .tool-section {
     padding: 10px;
-  }
-
-  .section-heading {
-    min-height: 26px;
-    margin-bottom: 7px;
   }
 
   .segmented {
