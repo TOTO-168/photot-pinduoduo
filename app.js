@@ -72,6 +72,7 @@ const MIN_FRAME_SIDE_BASE = 24;
 const SELECTION_FRAME_INSET = 3;
 const SELECTION_FRAME_WIDTH = 3.5;
 const CENTER_SNAP_THRESHOLD = 6;
+const EDGE_SNAP_THRESHOLD = 6;
 const EXPORT_PRESETS = Object.fromEntries(
   SOCIAL_PLATFORMS.flatMap((platform) =>
     platform.variants.map((variant) => [variant.id, [variant.width, variant.height]]),
@@ -125,7 +126,15 @@ let rafId = 0;
 let dragState = null;
 let pinchState = null;
 let activePointers = new Map();
-let centerGuide = { visible: false, snapped: false };
+let alignmentGuide = {
+  active: false,
+  centerX: false,
+  centerY: false,
+  edgeLeft: false,
+  edgeRight: false,
+  edgeTop: false,
+  edgeBottom: false,
+};
 let replaceButtonVisible = false;
 let ratioSubmenuKey = "";
 let stableMobileViewport = { width: 0, height: 0 };
@@ -266,13 +275,7 @@ function roundedRect(ctx, x, y, width, height, radius) {
 }
 
 function gridRect(col, row, colSpan, rowSpan, cols, rows, width, height, gap) {
-  const minimumFrameSide = Math.min(minFrameSide(width, height), width / cols, height / rows);
-  const maxGapX = Math.max(0, (width - minimumFrameSide * cols) / (cols + 1));
-  const maxGapY = Math.max(0, (height - minimumFrameSide * rows) / (rows + 1));
-  const safeGap = Math.min(gap, maxGapX, maxGapY);
-  const outer = safeGap;
-  const innerW = width - outer * 2;
-  const innerH = height - outer * 2;
+  const { safeGap, outer, innerW, innerH } = gridMetrics(cols, rows, width, height, gap);
   const cellW = (innerW - safeGap * (cols - 1)) / cols;
   const cellH = (innerH - safeGap * (rows - 1)) / rows;
   return {
@@ -283,40 +286,115 @@ function gridRect(col, row, colSpan, rowSpan, cols, rows, width, height, gap) {
   };
 }
 
-function gridAspect(cols, rows, width, height, gap) {
-  const frame = gridRect(0, 0, 1, 1, cols, rows, width, height, gap);
-  return frame.w / frame.h;
+function gridMetrics(cols, rows, width, height, gap) {
+  const minimumFrameSide = Math.min(minFrameSide(width, height), width / cols, height / rows);
+  const maxGapX = Math.max(0, (width - minimumFrameSide * cols) / (cols + 1));
+  const maxGapY = Math.max(0, (height - minimumFrameSide * rows) / (rows + 1));
+  const safeGap = Math.min(gap, maxGapX, maxGapY);
+  const outer = safeGap;
+  return {
+    safeGap,
+    outer,
+    innerW: width - outer * 2,
+    innerH: height - outer * 2,
+  };
 }
 
-function chooseOrientedGrid(count, width, height, gap, orientation) {
+function distributeIntoGroups(count, groups) {
+  const base = Math.floor(count / groups);
+  let remainder = count % groups;
+  return Array.from({ length: groups }, () => {
+    const size = base + (remainder > 0 ? 1 : 0);
+    remainder = Math.max(0, remainder - 1);
+    return size;
+  });
+}
+
+function makePackedRows(count, rowCount, width, height, gap) {
+  const rowSizes = distributeIntoGroups(count, rowCount);
+  const maxCols = Math.max(...rowSizes);
+  const { safeGap, outer, innerW, innerH } = gridMetrics(maxCols, rowCount, width, height, gap);
+  const rowH = (innerH - safeGap * (rowCount - 1)) / rowCount;
+  const frames = [];
+
+  rowSizes.forEach((cols, row) => {
+    const cellW = (innerW - safeGap * (cols - 1)) / cols;
+    for (let col = 0; col < cols; col += 1) {
+      frames.push({
+        x: outer + col * (cellW + safeGap),
+        y: outer + row * (rowH + safeGap),
+        w: cellW,
+        h: rowH,
+      });
+    }
+  });
+
+  return frames;
+}
+
+function sortFramesByReadingOrder(frames) {
+  return frames.slice().sort((a, b) => {
+    if (Math.abs(a.y - b.y) > 0.5) return a.y - b.y;
+    return a.x - b.x;
+  });
+}
+
+function makePackedColumns(count, colCount, width, height, gap) {
+  const columnSizes = distributeIntoGroups(count, colCount);
+  const maxRows = Math.max(...columnSizes);
+  const { safeGap, outer, innerW, innerH } = gridMetrics(colCount, maxRows, width, height, gap);
+  const colW = (innerW - safeGap * (colCount - 1)) / colCount;
+  const frames = [];
+
+  columnSizes.forEach((rows, col) => {
+    const cellH = (innerH - safeGap * (rows - 1)) / rows;
+    for (let row = 0; row < rows; row += 1) {
+      frames.push({
+        x: outer + col * (colW + safeGap),
+        y: outer + row * (cellH + safeGap),
+        w: colW,
+        h: cellH,
+      });
+    }
+  });
+
+  return sortFramesByReadingOrder(frames);
+}
+
+function frameLayoutScore(frames, targetAspect) {
+  const areas = frames.map((frame) => frame.w * frame.h);
+  const minArea = Math.max(1, Math.min(...areas));
+  const maxArea = Math.max(...areas);
+  const aspectScore =
+    frames.reduce((total, frame) => total + Math.abs(Math.log(frame.w / frame.h / targetAspect)), 0) / frames.length;
+  const areaPenalty = Math.log(maxArea / minArea) * 0.14;
+  return aspectScore + areaPenalty;
+}
+
+function choosePackedFrames(count, width, height, gap, orientation) {
   const target = orientation === "landscape" ? 1.45 : 1 / 1.45;
-  let best = { cols: 1, rows: count, score: Infinity };
+  let bestFrames = [];
+  let bestScore = Infinity;
 
-  for (let cols = 1; cols <= count; cols += 1) {
-    const rows = Math.ceil(count / cols);
-    const aspect = gridAspect(cols, rows, width, height, gap);
-    const emptyCells = cols * rows - count;
-    const mismatch =
+  for (let groups = 1; groups <= count; groups += 1) {
+    const frames =
       orientation === "landscape"
-        ? Math.max(0, 1.08 - aspect)
-        : Math.max(0, aspect - 0.92);
-    const directionPenalty = mismatch > 0 ? 20 + mismatch * 10 : 0;
-    const shapePenalty = Math.abs(Math.log(aspect / target));
-    const score = directionPenalty + shapePenalty + emptyCells * 0.22 + Math.abs(cols - rows) * 0.015;
+        ? makePackedRows(count, groups, width, height, gap)
+        : makePackedColumns(count, groups, width, height, gap);
+    const groupPenalty = Math.abs(groups - Math.sqrt(count)) * 0.04;
+    const score = frameLayoutScore(frames, target) + groupPenalty;
 
-    if (score < best.score) {
-      best = { cols, rows, score };
+    if (score < bestScore) {
+      bestScore = score;
+      bestFrames = frames;
     }
   }
 
-  return best;
+  return bestFrames;
 }
 
 function makeOrientedFrames(count, width, height, gap, orientation) {
-  const { cols, rows } = chooseOrientedGrid(count, width, height, gap, orientation);
-  return Array.from({ length: count }, (_, index) =>
-    gridRect(index % cols, Math.floor(index / cols), 1, 1, cols, rows, width, height, gap),
-  );
+  return choosePackedFrames(count, width, height, gap, orientation);
 }
 
 function makeAutoFrames(count, width, height, gap) {
@@ -411,14 +489,103 @@ function getFrames(count, width, height) {
   return makeAutoFrames(count, width, height, gap);
 }
 
-function coverImageMetrics(photo, frame) {
+function coverImageMetrics(photo, frame, offsets = photo) {
   const base = Math.max(frame.w / photo.img.width, frame.h / photo.img.height);
   const scale = base * photo.zoom;
   const drawW = photo.img.width * scale;
   const drawH = photo.img.height * scale;
-  const x = frame.x + frame.w / 2 - drawW / 2 + photo.offsetX * frame.w;
-  const y = frame.y + frame.h / 2 - drawH / 2 + photo.offsetY * frame.h;
+  const x = frame.x + frame.w / 2 - drawW / 2 + offsets.offsetX * frame.w;
+  const y = frame.y + frame.h / 2 - drawH / 2 + offsets.offsetY * frame.h;
   return { x, y, drawW, drawH };
+}
+
+function photoPanLimits(photo, frame) {
+  const base = Math.max(frame.w / photo.img.width, frame.h / photo.img.height);
+  const scale = base * photo.zoom;
+  const drawW = photo.img.width * scale;
+  const drawH = photo.img.height * scale;
+  return {
+    x: Math.max(0, (drawW - frame.w) / (2 * Math.max(1, frame.w))),
+    y: Math.max(0, (drawH - frame.h) / (2 * Math.max(1, frame.h))),
+  };
+}
+
+function snapThreshold(pixelThreshold, frameSide, maxRatio) {
+  return Math.min(maxRatio, Math.max(pixelThreshold / Math.max(1, frameSide), 0.001));
+}
+
+function snapAxisOffset(rawValue, limit, frameSide, centerPixelThreshold, edgePixelThreshold) {
+  if (limit <= 0.0001) {
+    return { rawValue: 0, value: 0, snap: "center" };
+  }
+
+  const clamped = clamp(rawValue, -limit, limit);
+  const centerThreshold = snapThreshold(centerPixelThreshold, frameSide, 0.04);
+  const edgeThreshold = snapThreshold(edgePixelThreshold, frameSide, 0.04);
+  const candidates = [];
+
+  if (Math.abs(clamped) <= centerThreshold) {
+    candidates.push({ snap: "center", value: 0, distance: Math.abs(clamped) });
+  }
+  if (limit - clamped <= edgeThreshold) {
+    candidates.push({ snap: "positiveEdge", value: limit, distance: limit - clamped });
+  }
+  if (clamped + limit <= edgeThreshold) {
+    candidates.push({ snap: "negativeEdge", value: -limit, distance: clamped + limit });
+  }
+
+  candidates.sort((a, b) => a.distance - b.distance);
+  const snap = candidates[0];
+  return {
+    rawValue: clamped,
+    value: snap ? snap.value : clamped,
+    snap: snap?.snap || "",
+  };
+}
+
+function resetAlignmentGuide() {
+  alignmentGuide.active = false;
+  alignmentGuide.centerX = false;
+  alignmentGuide.centerY = false;
+  alignmentGuide.edgeLeft = false;
+  alignmentGuide.edgeRight = false;
+  alignmentGuide.edgeTop = false;
+  alignmentGuide.edgeBottom = false;
+}
+
+function applyPhotoBoundsAndSnap(photo, frame, rawOffsetX = photo.offsetX, rawOffsetY = photo.offsetY, showGuide = false) {
+  const limits = photoPanLimits(photo, frame);
+  const x = snapAxisOffset(rawOffsetX, limits.x, frame.w, CENTER_SNAP_THRESHOLD, EDGE_SNAP_THRESHOLD);
+  const y = snapAxisOffset(rawOffsetY, limits.y, frame.h, CENTER_SNAP_THRESHOLD, EDGE_SNAP_THRESHOLD);
+
+  photo.offsetX = x.value;
+  photo.offsetY = y.value;
+  alignmentGuide.active = showGuide;
+  alignmentGuide.centerX = x.snap === "center";
+  alignmentGuide.centerY = y.snap === "center";
+  alignmentGuide.edgeLeft = x.snap === "positiveEdge";
+  alignmentGuide.edgeRight = x.snap === "negativeEdge";
+  alignmentGuide.edgeTop = y.snap === "positiveEdge";
+  alignmentGuide.edgeBottom = y.snap === "negativeEdge";
+
+  return {
+    rawOffsetX: x.rawValue,
+    rawOffsetY: y.rawValue,
+  };
+}
+
+function constrainedPhotoOffsets(photo, frame) {
+  const limits = photoPanLimits(photo, frame);
+  return {
+    offsetX: clamp(photo.offsetX, -limits.x, limits.x),
+    offsetY: clamp(photo.offsetY, -limits.y, limits.y),
+  };
+}
+
+function constrainPhotoToFrame(photo, frame) {
+  const offsets = constrainedPhotoOffsets(photo, frame);
+  photo.offsetX = offsets.offsetX;
+  photo.offsetY = offsets.offsetY;
 }
 
 function strokeSelectedFrame(ctx, frame, photoRadius) {
@@ -436,13 +603,11 @@ function strokeSelectedFrame(ctx, frame, photoRadius) {
   ctx.restore();
 }
 
-function strokeCenterGuide(ctx, frame, snapped) {
-  const x = frame.x + frame.w / 2;
-  const inset = Math.min(18, Math.max(8, frame.h * 0.08));
+function strokeGuideLine(ctx, fromX, fromY, toX, toY, snapped) {
   ctx.save();
   ctx.beginPath();
-  ctx.moveTo(x, frame.y + inset);
-  ctx.lineTo(x, frame.y + frame.h - inset);
+  ctx.moveTo(fromX, fromY);
+  ctx.lineTo(toX, toY);
   ctx.lineWidth = snapped ? 2.75 : 1.8;
   ctx.strokeStyle = snapped ? "rgba(0, 122, 255, 0.92)" : "rgba(0, 122, 255, 0.46)";
   ctx.setLineDash(snapped ? [] : [7, 7]);
@@ -453,6 +618,31 @@ function strokeCenterGuide(ctx, frame, snapped) {
   ctx.restore();
 }
 
+function strokeAlignmentGuides(ctx, frame) {
+  if (!alignmentGuide.active) return;
+
+  const x = frame.x + frame.w / 2;
+  const y = frame.y + frame.h / 2;
+  const xInset = Math.min(18, Math.max(8, frame.w * 0.08));
+  const yInset = Math.min(18, Math.max(8, frame.h * 0.08));
+  strokeGuideLine(ctx, x, frame.y + yInset, x, frame.y + frame.h - yInset, alignmentGuide.centerX);
+  strokeGuideLine(ctx, frame.x + xInset, y, frame.x + frame.w - xInset, y, alignmentGuide.centerY);
+
+  const edgeInset = Math.min(14, Math.max(6, Math.min(frame.w, frame.h) * 0.05));
+  if (alignmentGuide.edgeLeft) {
+    strokeGuideLine(ctx, frame.x + 1.5, frame.y + edgeInset, frame.x + 1.5, frame.y + frame.h - edgeInset, true);
+  }
+  if (alignmentGuide.edgeRight) {
+    strokeGuideLine(ctx, frame.x + frame.w - 1.5, frame.y + edgeInset, frame.x + frame.w - 1.5, frame.y + frame.h - edgeInset, true);
+  }
+  if (alignmentGuide.edgeTop) {
+    strokeGuideLine(ctx, frame.x + edgeInset, frame.y + 1.5, frame.x + frame.w - edgeInset, frame.y + 1.5, true);
+  }
+  if (alignmentGuide.edgeBottom) {
+    strokeGuideLine(ctx, frame.x + edgeInset, frame.y + frame.h - 1.5, frame.x + frame.w - edgeInset, frame.y + frame.h - 1.5, true);
+  }
+}
+
 function placeholderFontSize(frames, canvasWidth, canvasHeight) {
   const smallestFrameSide = frames.reduce((smallest, frame) => Math.min(smallest, frame.w, frame.h), Infinity);
   const canvasSide = Math.min(canvasWidth, canvasHeight);
@@ -461,12 +651,13 @@ function placeholderFontSize(frames, canvasWidth, canvasHeight) {
 
 function drawPhotoFrame(ctx, photo, frame, canvasWidth, canvasHeight, exporting = false, placeholderNumber = null, fontSize = 0) {
   const radius = Math.min(scaledSetting(state.radius, canvasWidth, canvasHeight), frame.w / 2, frame.h / 2);
+  const offsets = constrainedPhotoOffsets(photo, frame);
   ctx.save();
   roundedRect(ctx, frame.x, frame.y, frame.w, frame.h, radius);
   ctx.clip();
   ctx.fillStyle = "#e5e7eb";
   ctx.fillRect(frame.x, frame.y, frame.w, frame.h);
-  const metrics = coverImageMetrics(photo, frame);
+  const metrics = coverImageMetrics(photo, frame, offsets);
   ctx.drawImage(photo.img, metrics.x, metrics.y, metrics.drawW, metrics.drawH);
   ctx.restore();
 
@@ -510,9 +701,7 @@ function drawCollage(ctx, width, height, options = {}) {
   if (!exporting && selectedIndex >= 0 && frames[selectedIndex]) {
     const frame = frames[selectedIndex];
     const photoRadius = Math.min(scaledSetting(state.radius, width, height), frame.w / 2, frame.h / 2);
-    if (centerGuide.visible) {
-      strokeCenterGuide(ctx, frame, centerGuide.snapped);
-    }
+    strokeAlignmentGuides(ctx, frame);
     strokeSelectedFrame(ctx, frame, photoRadius);
   }
 }
@@ -639,8 +828,7 @@ async function resetToDemoPhotos() {
   dragState = null;
   pinchState = null;
   activePointers.clear();
-  centerGuide.visible = false;
-  centerGuide.snapped = false;
+  resetAlignmentGuide();
   replaceButtonVisible = false;
   updateControls();
   scheduleRender();
@@ -811,6 +999,7 @@ function setSelectedNumber(key, value) {
   const photo = selectedPhoto();
   if (!photo) return;
   if (key === "zoom") photo.zoom = clamp(1 + value / 100, 1, 2.6);
+  constrainSelectedPhotoToFrame();
   scheduleRender();
 }
 
@@ -849,20 +1038,18 @@ function selectedFrame() {
   return frames[selectedIndex] || null;
 }
 
+function constrainSelectedPhotoToFrame() {
+  const photo = selectedPhoto();
+  const frame = selectedFrame();
+  if (photo && frame) constrainPhotoToFrame(photo, frame);
+}
+
 function syncZoomControls() {
   const photo = selectedPhoto();
   if (!photo) return;
   const zoomAmount = Math.round((photo.zoom - 1) * 100);
   els.zoomRange.value = zoomAmount;
   els.zoomValue.value = zoomAmount;
-}
-
-function applyCenterSnap(photo, frame, forceGuide = false) {
-  const threshold = Math.min(0.04, Math.max(0.009, CENTER_SNAP_THRESHOLD / Math.max(1, frame.w)));
-  const snapped = Math.abs(photo.offsetX) <= threshold;
-  if (snapped) photo.offsetX = 0;
-  centerGuide.visible = forceGuide || snapped;
-  centerGuide.snapped = snapped;
 }
 
 function hitGrid(point) {
@@ -887,8 +1074,7 @@ function startCanvasDrag(event) {
     activePointers.delete(event.pointerId);
     state.selectedId = null;
     replaceButtonVisible = false;
-    centerGuide.visible = false;
-    centerGuide.snapped = false;
+    resetAlignmentGuide();
     scheduleRender();
     return;
   }
@@ -896,8 +1082,7 @@ function startCanvasDrag(event) {
   if (hit && activePointers.size === 1) {
     state.selectedId = hit.photo.id;
     replaceButtonVisible = true;
-    centerGuide.visible = true;
-    centerGuide.snapped = Math.abs(hit.photo.offsetX) === 0;
+    const offsets = applyPhotoBoundsAndSnap(hit.photo, hit.frame, hit.photo.offsetX, hit.photo.offsetY, true);
     dragState = {
       id: hit.photo.id,
       type: "grid-pan",
@@ -905,8 +1090,8 @@ function startCanvasDrag(event) {
       lastX: point.x,
       lastY: point.y,
       frame: hit.frame,
-      rawOffsetX: hit.photo.offsetX,
-      rawOffsetY: hit.photo.offsetY,
+      rawOffsetX: offsets.rawOffsetX,
+      rawOffsetY: offsets.rawOffsetY,
     };
   }
 
@@ -933,8 +1118,9 @@ function beginPinchGesture() {
     rawOffsetX: photo.offsetX,
     rawOffsetY: photo.offsetY,
   };
-  centerGuide.visible = true;
-  centerGuide.snapped = Math.abs(photo.offsetX) === 0;
+  const offsets = applyPhotoBoundsAndSnap(photo, frame, photo.offsetX, photo.offsetY, true);
+  pinchState.rawOffsetX = offsets.rawOffsetX;
+  pinchState.rawOffsetY = offsets.rawOffsetY;
 }
 
 function updatePinchGesture() {
@@ -960,7 +1146,9 @@ function updatePinchGesture() {
   photo.offsetX = pinchState.rawOffsetX;
   photo.offsetY = pinchState.rawOffsetY;
   pinchState.lastCenter = center;
-  applyCenterSnap(photo, pinchState.frame, true);
+  const offsets = applyPhotoBoundsAndSnap(photo, pinchState.frame, pinchState.rawOffsetX, pinchState.rawOffsetY, true);
+  pinchState.rawOffsetX = offsets.rawOffsetX;
+  pinchState.rawOffsetY = offsets.rawOffsetY;
   syncZoomControls();
   scheduleRender();
 }
@@ -988,7 +1176,9 @@ function moveCanvasDrag(event) {
   dragState.rawOffsetY = clamp(dragState.rawOffsetY + dy / Math.max(1, dragState.frame.h), -0.9, 0.9);
   photo.offsetX = dragState.rawOffsetX;
   photo.offsetY = dragState.rawOffsetY;
-  applyCenterSnap(photo, dragState.frame, true);
+  const offsets = applyPhotoBoundsAndSnap(photo, dragState.frame, dragState.rawOffsetX, dragState.rawOffsetY, true);
+  dragState.rawOffsetX = offsets.rawOffsetX;
+  dragState.rawOffsetY = offsets.rawOffsetY;
 
   dragState.lastX = point.x;
   dragState.lastY = point.y;
@@ -1015,6 +1205,7 @@ function endCanvasDrag(event) {
     const frame = selectedFrame();
     const [pointerId, point] = activePointers.entries().next().value;
     if (photo && frame) {
+      const offsets = applyPhotoBoundsAndSnap(photo, frame, photo.offsetX, photo.offsetY, true);
       dragState = {
         id: photo.id,
         type: "grid-pan",
@@ -1022,19 +1213,16 @@ function endCanvasDrag(event) {
         lastX: point.x,
         lastY: point.y,
         frame,
-        rawOffsetX: photo.offsetX,
-        rawOffsetY: photo.offsetY,
+        rawOffsetX: offsets.rawOffsetX,
+        rawOffsetY: offsets.rawOffsetY,
       };
-      centerGuide.visible = true;
-      centerGuide.snapped = Math.abs(photo.offsetX) === 0;
       scheduleRender();
       return;
     }
   }
 
   dragState = null;
-  centerGuide.visible = false;
-  centerGuide.snapped = false;
+  resetAlignmentGuide();
   scheduleRender();
 }
 
@@ -1044,6 +1232,7 @@ function handleWheel(event) {
   event.preventDefault();
   const nextZoom = photo.zoom + (event.deltaY > 0 ? -0.04 : 0.04);
   photo.zoom = clamp(nextZoom, 1, 2.6);
+  constrainSelectedPhotoToFrame();
   scheduleRender();
 }
 
