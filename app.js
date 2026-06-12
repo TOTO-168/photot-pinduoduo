@@ -71,6 +71,7 @@ const PLACEHOLDER_COLORS = ["#f8fafc", "#eef6ff", "#f3f8ef", "#fff4e6", "#fff0f5
 const MIN_FRAME_SIDE_BASE = 24;
 const SELECTION_FRAME_INSET = 3;
 const SELECTION_FRAME_WIDTH = 3.5;
+const CENTER_SNAP_THRESHOLD = 6;
 const EXPORT_PRESETS = Object.fromEntries(
   SOCIAL_PLATFORMS.flatMap((platform) =>
     platform.variants.map((variant) => [variant.id, [variant.width, variant.height]]),
@@ -122,6 +123,9 @@ const els = {
 let preview = { width: 0, height: 0, dpr: 1 };
 let rafId = 0;
 let dragState = null;
+let pinchState = null;
+let activePointers = new Map();
+let centerGuide = { visible: false, snapped: false };
 let replaceButtonVisible = false;
 let ratioSubmenuKey = "";
 let stableMobileViewport = { width: 0, height: 0 };
@@ -432,6 +436,23 @@ function strokeSelectedFrame(ctx, frame, photoRadius) {
   ctx.restore();
 }
 
+function strokeCenterGuide(ctx, frame, snapped) {
+  const x = frame.x + frame.w / 2;
+  const inset = Math.min(18, Math.max(8, frame.h * 0.08));
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x, frame.y + inset);
+  ctx.lineTo(x, frame.y + frame.h - inset);
+  ctx.lineWidth = snapped ? 2.75 : 1.8;
+  ctx.strokeStyle = snapped ? "rgba(0, 122, 255, 0.92)" : "rgba(0, 122, 255, 0.46)";
+  ctx.setLineDash(snapped ? [] : [7, 7]);
+  ctx.lineCap = "round";
+  ctx.shadowColor = "rgba(0, 122, 255, 0.28)";
+  ctx.shadowBlur = snapped ? 10 : 4;
+  ctx.stroke();
+  ctx.restore();
+}
+
 function placeholderFontSize(frames, canvasWidth, canvasHeight) {
   const smallestFrameSide = frames.reduce((smallest, frame) => Math.min(smallest, frame.w, frame.h), Infinity);
   const canvasSide = Math.min(canvasWidth, canvasHeight);
@@ -489,6 +510,9 @@ function drawCollage(ctx, width, height, options = {}) {
   if (!exporting && selectedIndex >= 0 && frames[selectedIndex]) {
     const frame = frames[selectedIndex];
     const photoRadius = Math.min(scaledSetting(state.radius, width, height), frame.w / 2, frame.h / 2);
+    if (centerGuide.visible) {
+      strokeCenterGuide(ctx, frame, centerGuide.snapped);
+    }
     strokeSelectedFrame(ctx, frame, photoRadius);
   }
 }
@@ -613,6 +637,10 @@ async function resetToDemoPhotos() {
   const previousPhotos = state.photos.slice();
   state.selectedId = null;
   dragState = null;
+  pinchState = null;
+  activePointers.clear();
+  centerGuide.visible = false;
+  centerGuide.snapped = false;
   replaceButtonVisible = false;
   updateControls();
   scheduleRender();
@@ -803,6 +831,40 @@ function canvasPoint(event) {
   };
 }
 
+function pointerDistance(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function pointerMidpoint(a, b) {
+  return {
+    x: (a.x + b.x) / 2,
+    y: (a.y + b.y) / 2,
+  };
+}
+
+function selectedFrame() {
+  const selectedIndex = selectedPhotoIndex();
+  if (selectedIndex < 0) return null;
+  const frames = getFrames(state.photos.length, preview.width, preview.height);
+  return frames[selectedIndex] || null;
+}
+
+function syncZoomControls() {
+  const photo = selectedPhoto();
+  if (!photo) return;
+  const zoomAmount = Math.round((photo.zoom - 1) * 100);
+  els.zoomRange.value = zoomAmount;
+  els.zoomValue.value = zoomAmount;
+}
+
+function applyCenterSnap(photo, frame, forceGuide = false) {
+  const threshold = Math.min(0.04, Math.max(0.009, CENTER_SNAP_THRESHOLD / Math.max(1, frame.w)));
+  const snapped = Math.abs(photo.offsetX) <= threshold;
+  if (snapped) photo.offsetX = 0;
+  centerGuide.visible = forceGuide || snapped;
+  centerGuide.snapped = snapped;
+}
+
 function hitGrid(point) {
   const frames = getFrames(state.photos.length, preview.width, preview.height);
   for (let index = frames.length - 1; index >= 0; index -= 1) {
@@ -816,39 +878,117 @@ function hitGrid(point) {
 
 function startCanvasDrag(event) {
   if (!state.photos.length) return;
+  event.preventDefault();
   const point = canvasPoint(event);
+  activePointers.set(event.pointerId, point);
+
   const hit = hitGrid(point);
-  if (!hit) {
+  if (!hit && activePointers.size === 1) {
+    activePointers.delete(event.pointerId);
     state.selectedId = null;
     replaceButtonVisible = false;
+    centerGuide.visible = false;
+    centerGuide.snapped = false;
     scheduleRender();
     return;
   }
 
-  state.selectedId = hit.photo.id;
-  replaceButtonVisible = true;
-  dragState = {
-    id: hit.photo.id,
-    type: "grid-pan",
-    lastX: point.x,
-    lastY: point.y,
-    frame: hit.frame,
-  };
+  if (hit && activePointers.size === 1) {
+    state.selectedId = hit.photo.id;
+    replaceButtonVisible = true;
+    centerGuide.visible = true;
+    centerGuide.snapped = Math.abs(hit.photo.offsetX) === 0;
+    dragState = {
+      id: hit.photo.id,
+      type: "grid-pan",
+      pointerId: event.pointerId,
+      lastX: point.x,
+      lastY: point.y,
+      frame: hit.frame,
+      rawOffsetX: hit.photo.offsetX,
+      rawOffsetY: hit.photo.offsetY,
+    };
+  }
+
   els.canvas.setPointerCapture(event.pointerId);
+  if (activePointers.size >= 2) beginPinchGesture();
+  scheduleRender();
+}
+
+function beginPinchGesture() {
+  const photo = selectedPhoto();
+  const frame = selectedFrame();
+  const points = Array.from(activePointers.values());
+  if (!photo || !frame || points.length < 2) return;
+
+  const [first, second] = points;
+  const distance = Math.max(1, pointerDistance(first, second));
+  dragState = null;
+  pinchState = {
+    id: photo.id,
+    frame,
+    startDistance: distance,
+    startZoom: photo.zoom,
+    lastCenter: pointerMidpoint(first, second),
+    rawOffsetX: photo.offsetX,
+    rawOffsetY: photo.offsetY,
+  };
+  centerGuide.visible = true;
+  centerGuide.snapped = Math.abs(photo.offsetX) === 0;
+}
+
+function updatePinchGesture() {
+  const photo = selectedPhoto();
+  if (!pinchState || !photo || photo.id !== pinchState.id || activePointers.size < 2) return;
+
+  const points = Array.from(activePointers.values());
+  const [first, second] = points;
+  const distance = Math.max(1, pointerDistance(first, second));
+  const center = pointerMidpoint(first, second);
+  const zoomRatio = distance / pinchState.startDistance;
+  photo.zoom = clamp(pinchState.startZoom * zoomRatio, 1, 2.6);
+  pinchState.rawOffsetX = clamp(
+    pinchState.rawOffsetX + (center.x - pinchState.lastCenter.x) / Math.max(1, pinchState.frame.w),
+    -0.9,
+    0.9,
+  );
+  pinchState.rawOffsetY = clamp(
+    pinchState.rawOffsetY + (center.y - pinchState.lastCenter.y) / Math.max(1, pinchState.frame.h),
+    -0.9,
+    0.9,
+  );
+  photo.offsetX = pinchState.rawOffsetX;
+  photo.offsetY = pinchState.rawOffsetY;
+  pinchState.lastCenter = center;
+  applyCenterSnap(photo, pinchState.frame, true);
+  syncZoomControls();
   scheduleRender();
 }
 
 function moveCanvasDrag(event) {
-  if (!dragState) return;
+  if (!activePointers.has(event.pointerId)) return;
+  event.preventDefault();
+  activePointers.set(event.pointerId, canvasPoint(event));
+
+  if (pinchState || activePointers.size >= 2) {
+    if (!pinchState) beginPinchGesture();
+    updatePinchGesture();
+    return;
+  }
+
+  if (!dragState || dragState.pointerId !== event.pointerId) return;
   const photo = selectedPhoto();
   if (!photo || photo.id !== dragState.id) return;
 
-  const point = canvasPoint(event);
+  const point = activePointers.get(event.pointerId);
   const dx = point.x - dragState.lastX;
   const dy = point.y - dragState.lastY;
 
-  photo.offsetX = clamp(photo.offsetX + dx / Math.max(1, dragState.frame.w), -0.9, 0.9);
-  photo.offsetY = clamp(photo.offsetY + dy / Math.max(1, dragState.frame.h), -0.9, 0.9);
+  dragState.rawOffsetX = clamp(dragState.rawOffsetX + dx / Math.max(1, dragState.frame.w), -0.9, 0.9);
+  dragState.rawOffsetY = clamp(dragState.rawOffsetY + dy / Math.max(1, dragState.frame.h), -0.9, 0.9);
+  photo.offsetX = dragState.rawOffsetX;
+  photo.offsetY = dragState.rawOffsetY;
+  applyCenterSnap(photo, dragState.frame, true);
 
   dragState.lastX = point.x;
   dragState.lastY = point.y;
@@ -856,13 +996,46 @@ function moveCanvasDrag(event) {
 }
 
 function endCanvasDrag(event) {
-  if (!dragState) return;
+  activePointers.delete(event.pointerId);
   try {
     els.canvas.releasePointerCapture(event.pointerId);
   } catch {
     // Pointer capture can already be released by the browser.
   }
+
+  if (activePointers.size >= 2) {
+    beginPinchGesture();
+    scheduleRender();
+    return;
+  }
+
+  pinchState = null;
+  if (activePointers.size === 1) {
+    const photo = selectedPhoto();
+    const frame = selectedFrame();
+    const [pointerId, point] = activePointers.entries().next().value;
+    if (photo && frame) {
+      dragState = {
+        id: photo.id,
+        type: "grid-pan",
+        pointerId,
+        lastX: point.x,
+        lastY: point.y,
+        frame,
+        rawOffsetX: photo.offsetX,
+        rawOffsetY: photo.offsetY,
+      };
+      centerGuide.visible = true;
+      centerGuide.snapped = Math.abs(photo.offsetX) === 0;
+      scheduleRender();
+      return;
+    }
+  }
+
   dragState = null;
+  centerGuide.visible = false;
+  centerGuide.snapped = false;
+  scheduleRender();
 }
 
 function handleWheel(event) {
