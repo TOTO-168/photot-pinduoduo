@@ -186,6 +186,7 @@ h1 {
 .variant-chip,
 .segment,
 .layout-button,
+.size-lock,
 .icon-button {
   cursor: pointer;
   transition:
@@ -202,6 +203,7 @@ h1 {
 .variant-chip:active,
 .segment:active,
 .layout-button:active,
+.size-lock:active,
 .icon-button:active {
   transform: scale(0.97);
 }
@@ -390,8 +392,9 @@ h1 {
 
 .custom-size {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 34px minmax(0, 1fr);
+  align-items: end;
+  gap: 7px;
   max-height: 0;
   margin-top: 0;
   overflow: hidden;
@@ -405,7 +408,7 @@ h1 {
 }
 
 .custom-size.is-open {
-  max-height: 58px;
+  max-height: 94px;
   margin-top: 9px;
   opacity: 1;
   transform: translateY(0);
@@ -422,12 +425,98 @@ h1 {
 .custom-size input {
   width: 100%;
   min-height: 36px;
-  padding: 0 10px;
+  min-width: 0;
+  padding: 0 0 0 10px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.size-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-width: 0;
   border: 1px solid rgba(17, 24, 39, 0.08);
   border-radius: 12px;
-  outline: 0;
   background: rgba(255, 255, 255, 0.78);
-  text-align: center;
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.size-field:focus-within {
+  border-color: rgba(0, 122, 255, 0.38);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+}
+
+.size-unit {
+  padding: 0 9px 0 5px;
+  color: rgba(107, 114, 128, 0.86);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.size-lock {
+  display: grid;
+  place-items: center;
+  align-self: end;
+  width: 34px;
+  height: 36px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 12px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.size-lock.is-locked {
+  border-color: rgba(0, 122, 255, 0.28);
+  color: var(--accent);
+  background: rgba(0, 122, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(0, 122, 255, 0.08);
+}
+
+.lock-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+  background: currentColor;
+  --lock-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='11' width='16' height='10' rx='2'/%3E%3Cpath d='M8 11V7a4 4 0 0 1 8 0v4'/%3E%3Cpath d='M12 15v2'/%3E%3C/svg%3E");
+  -webkit-mask: var(--lock-mask) center / contain no-repeat;
+  mask: var(--lock-mask) center / contain no-repeat;
+}
+
+.size-lock:not(.is-locked) .lock-icon {
+  --lock-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='11' width='16' height='10' rx='2'/%3E%3Cpath d='M8 11V7a4 4 0 0 1 7.6-1.8'/%3E%3Cpath d='M12 15v2'/%3E%3C/svg%3E");
+}
+
+.custom-size-warning {
+  grid-column: 1 / -1;
+  min-height: 14px;
+  margin: -1px 0 0;
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.2;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.custom-size.has-warning .custom-size-warning {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.custom-size.has-warning .size-field {
+  border-color: rgba(255, 59, 48, 0.42);
+  box-shadow: 0 0 0 3px rgba(255, 59, 48, 0.08);
 }
 
 .orientation-toggle {
@@ -639,6 +728,7 @@ output {
 .icon-button:hover,
 .layout-button:hover,
 .orientation-button:hover,
+.size-lock:hover,
 .chip:hover,
 .variant-chip:hover,
 .button:hover {
@@ -681,6 +771,9 @@ button:disabled:hover {
     linear-gradient(135deg, rgba(0, 122, 255, 0.08), rgba(255, 45, 85, 0.08));
   box-shadow: var(--shadow);
   backdrop-filter: blur(30px);
+  transition:
+    border-radius 260ms ease,
+    box-shadow 260ms ease;
 }
 
 .canvas-add-button,
@@ -708,8 +801,12 @@ button:disabled:hover {
 }
 
 .canvas-add-button {
-  top: 12px;
-  left: 12px;
+  top: -12px;
+  left: 50%;
+  z-index: 6;
+  width: 42px;
+  height: 42px;
+  transform: translateX(-50%);
 }
 
 .canvas-replace-button {
@@ -745,13 +842,15 @@ button:disabled:hover {
 
 .canvas-add-button:hover,
 .canvas-replace-button:hover {
-  transform: translateY(-1px);
   box-shadow: 0 16px 34px rgba(0, 122, 255, 0.28);
 }
 
-.canvas-frame.has-selected-photo .canvas-add-button {
-  opacity: 0;
-  pointer-events: none;
+.canvas-add-button:hover {
+  transform: translate(-50%, -1px);
+}
+
+.canvas-replace-button:hover {
+  transform: translateY(-1px);
 }
 
 #collageCanvas {
@@ -764,9 +863,20 @@ button:disabled:hover {
     0 0 0 1px rgba(255, 255, 255, 0.4);
   cursor: grab;
   touch-action: none;
+  transform-origin: center;
+  will-change: width, height, transform, opacity;
   transition:
+    width 420ms cubic-bezier(0.4, 0, 0.2, 1),
+    height 420ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 260ms ease,
+    transform 420ms cubic-bezier(0.4, 0, 0.2, 1),
     border-radius 180ms ease,
     box-shadow 180ms ease;
+}
+
+.canvas-frame.is-preview-transitioning #collageCanvas {
+  opacity: 0.96;
+  transform: scale(0.992);
 }
 
 #collageCanvas:active {
@@ -888,7 +998,13 @@ button:disabled:hover {
     box-shadow: 0 16px 42px rgba(15, 23, 42, 0.12);
   }
 
-  .canvas-add-button,
+  .canvas-add-button {
+    top: -10px;
+    left: 50%;
+    width: 38px;
+    height: 38px;
+  }
+
   .canvas-replace-button {
     top: 9px;
     left: 9px;

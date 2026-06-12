@@ -11,7 +11,7 @@
       content="Photot拼多多是一個手機和桌面都能使用的本機照片拼貼工具。"
     />
     <title>Photot拼多多</title>
-    <link rel="stylesheet" href="./styles.css?v=20260612-1642" />
+    <link rel="stylesheet" href="./styles.css?v=20260612-2146" />
   </head>
   <body>
     <div class="app-shell">
@@ -64,12 +64,45 @@
             <div class="custom-size" id="customSize">
               <label>
                 <span>寬</span>
-                <input id="customWidth" type="number" min="320" max="4096" value="1600" />
+                <span class="size-field">
+                  <input
+                    id="customWidth"
+                    type="text"
+                    inputmode="numeric"
+                    pattern="[0-9]*"
+                    autocomplete="off"
+                    value="3000"
+                    aria-describedby="customSizeWarning"
+                  />
+                  <span class="size-unit">px</span>
+                </span>
               </label>
+              <button
+                class="size-lock is-locked"
+                id="customSizeLock"
+                type="button"
+                aria-label="取消同步長寬"
+                aria-pressed="true"
+                title="同步長寬"
+              >
+                <span class="lock-icon" aria-hidden="true"></span>
+              </button>
               <label>
                 <span>高</span>
-                <input id="customHeight" type="number" min="320" max="4096" value="1600" />
+                <span class="size-field">
+                  <input
+                    id="customHeight"
+                    type="text"
+                    inputmode="numeric"
+                    pattern="[0-9]*"
+                    autocomplete="off"
+                    value="3000"
+                    aria-describedby="customSizeWarning"
+                  />
+                  <span class="size-unit">px</span>
+                </span>
               </label>
+              <p class="custom-size-warning" id="customSizeWarning" aria-live="polite"></p>
             </div>
           </section>
 
@@ -160,6 +193,6 @@
       </main>
     </div>
 
-    <script src="./app.js?v=20260612-1717"></script>
+    <script src="./app.js?v=20260612-2135"></script>
   </body>
 </html>

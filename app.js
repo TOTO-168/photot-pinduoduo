@@ -67,6 +67,10 @@ const SOCIAL_PLATFORMS = [
 ];
 const DEFAULT_PLATFORM = "common";
 const DEFAULT_RATIO = "common-square";
+const CUSTOM_SIZE_DEFAULT = 3000;
+const CUSTOM_SIZE_MIN = 100;
+const CUSTOM_SIZE_MAX = 4096;
+const CUSTOM_SIZE_WARNING_TEXT = "最低要三位數";
 const PLACEHOLDER_COLORS = ["#f8fafc", "#eef6ff", "#f3f8ef", "#fff4e6", "#fff0f5", "#f3f0ff"];
 const MIN_FRAME_SIDE_BASE = 24;
 const SELECTION_FRAME_INSET = 3;
@@ -82,8 +86,9 @@ const EXPORT_PRESETS = Object.fromEntries(
 const state = {
   platform: DEFAULT_PLATFORM,
   ratio: DEFAULT_RATIO,
-  customWidth: 1600,
-  customHeight: 1600,
+  customWidth: CUSTOM_SIZE_DEFAULT,
+  customHeight: CUSTOM_SIZE_DEFAULT,
+  customSizeLocked: true,
   layout: "auto",
   tileOrientation: "landscape",
   gap: 0,
@@ -109,6 +114,8 @@ const els = {
   customSize: document.querySelector("#customSize"),
   customWidth: document.querySelector("#customWidth"),
   customHeight: document.querySelector("#customHeight"),
+  customSizeLock: document.querySelector("#customSizeLock"),
+  customSizeWarning: document.querySelector("#customSizeWarning"),
   gapRange: document.querySelector("#gapRange"),
   gapValue: document.querySelector("#gapValue"),
   radiusRange: document.querySelector("#radiusRange"),
@@ -138,13 +145,145 @@ let alignmentGuide = {
 let replaceButtonVisible = false;
 let ratioSubmenuKey = "";
 let stableMobileViewport = { width: 0, height: 0 };
+let customSizeEditSnapshot = null;
+let previewTransitionTimer = 0;
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+function normalizeCustomSize(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return CUSTOM_SIZE_DEFAULT;
+  return clamp(Math.round(number), CUSTOM_SIZE_MIN, CUSTOM_SIZE_MAX);
+}
+
 function uid() {
   return globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+}
+
+function isCustomSizeInput(input) {
+  return input === els.customWidth || input === els.customHeight;
+}
+
+function customSizeFieldForInput(input) {
+  return input === els.customHeight ? "customHeight" : "customWidth";
+}
+
+function pairedCustomSizeInput(input) {
+  return input === els.customWidth ? els.customHeight : els.customWidth;
+}
+
+function sanitizeCustomSizeInput(input) {
+  const sanitized = input.value.replace(/\D/g, "");
+  if (input.value !== sanitized) input.value = sanitized;
+  return sanitized;
+}
+
+function customSizeNumberFromInput(input) {
+  const value = sanitizeCustomSizeInput(input);
+  if (!value) return null;
+
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function beginCustomSizeEdit() {
+  customSizeEditSnapshot = {
+    customWidth: state.customWidth,
+    customHeight: state.customHeight,
+    locked: state.customSizeLocked,
+  };
+}
+
+function showCustomSizeWarning() {
+  els.customSize.classList.add("has-warning");
+  els.customSizeWarning.textContent = CUSTOM_SIZE_WARNING_TEXT;
+  els.customWidth.setAttribute("aria-invalid", "true");
+  els.customHeight.setAttribute("aria-invalid", "true");
+}
+
+function clearCustomSizeWarning() {
+  els.customSize.classList.remove("has-warning");
+  els.customSizeWarning.textContent = "";
+  els.customWidth.removeAttribute("aria-invalid");
+  els.customHeight.removeAttribute("aria-invalid");
+}
+
+function setCustomSizeValue(input, value) {
+  const field = customSizeFieldForInput(input);
+  const nextValue = normalizeCustomSize(value);
+  state[field] = nextValue;
+
+  if (state.customSizeLocked) {
+    state.customWidth = nextValue;
+    state.customHeight = nextValue;
+  }
+
+  scheduleRender();
+}
+
+function syncCustomSizeControls(force = false) {
+  const activeInput = isCustomSizeInput(document.activeElement) ? document.activeElement : null;
+  if (force || activeInput !== els.customWidth) els.customWidth.value = state.customWidth;
+  if (force || activeInput !== els.customHeight) els.customHeight.value = state.customHeight;
+
+  if (!force && state.customSizeLocked && activeInput) {
+    pairedCustomSizeInput(activeInput).value = activeInput.value;
+  }
+
+  els.customSizeLock.classList.toggle("is-locked", state.customSizeLocked);
+  els.customSizeLock.setAttribute("aria-pressed", String(state.customSizeLocked));
+  els.customSizeLock.setAttribute("aria-label", state.customSizeLocked ? "取消同步長寬" : "同步長寬");
+}
+
+function revertCustomSizeInput(input) {
+  const snapshot = customSizeEditSnapshot || {
+    customWidth: state.customWidth,
+    customHeight: state.customHeight,
+    locked: state.customSizeLocked,
+  };
+  const field = customSizeFieldForInput(input);
+
+  if (snapshot.locked || state.customSizeLocked) {
+    state.customWidth = snapshot.customWidth;
+    state.customHeight = snapshot.customHeight;
+  } else {
+    state[field] = snapshot[field];
+  }
+
+  customSizeEditSnapshot = null;
+  syncCustomSizeControls(true);
+  showCustomSizeWarning();
+  scheduleRender();
+}
+
+function commitCustomSizeInput(input) {
+  const value = customSizeNumberFromInput(input);
+  if (value === null || value < CUSTOM_SIZE_MIN) {
+    revertCustomSizeInput(input);
+    return false;
+  }
+
+  setCustomSizeValue(input, value);
+  customSizeEditSnapshot = null;
+  syncCustomSizeControls(true);
+  clearCustomSizeWarning();
+  return true;
+}
+
+function handleCustomSizeInput(input) {
+  if (!customSizeEditSnapshot) beginCustomSizeEdit();
+
+  const value = customSizeNumberFromInput(input);
+  if (state.customSizeLocked) {
+    pairedCustomSizeInput(input).value = input.value;
+  }
+
+  if (value === null || value < CUSTOM_SIZE_MIN) return;
+
+  clearCustomSizeWarning();
+  setCustomSizeValue(input, value);
 }
 
 function selectedPhotoIndex() {
@@ -154,6 +293,15 @@ function selectedPhotoIndex() {
 function selectedPhoto() {
   const index = selectedPhotoIndex();
   return index >= 0 ? state.photos[index] : null;
+}
+
+function clearPhotoSelection() {
+  state.selectedId = null;
+  replaceButtonVisible = false;
+  dragState = null;
+  pinchState = null;
+  resetAlignmentGuide();
+  scheduleRender();
 }
 
 function platformById(platformId) {
@@ -181,11 +329,24 @@ function resetMobileViewportLock() {
   stableMobileViewport = { width: 0, height: 0 };
 }
 
+function animatePreviewTransition() {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  clearTimeout(previewTransitionTimer);
+  els.canvasFrame.classList.remove("is-preview-transitioning");
+  void els.canvasFrame.offsetWidth;
+  els.canvasFrame.classList.add("is-preview-transitioning");
+  previewTransitionTimer = window.setTimeout(() => {
+    els.canvasFrame.classList.remove("is-preview-transitioning");
+    syncReplaceButton();
+  }, 420);
+}
+
 function getExportSize() {
   if (state.ratio === "custom") {
     return {
-      width: clamp(Number(state.customWidth) || 1600, 320, 4096),
-      height: clamp(Number(state.customHeight) || 1600, 320, 4096),
+      width: normalizeCustomSize(state.customWidth),
+      height: normalizeCustomSize(state.customHeight),
     };
   }
 
@@ -896,8 +1057,7 @@ function updateControls() {
   els.gapValue.value = state.gap;
   els.radiusRange.value = state.radius;
   els.radiusValue.value = state.radius;
-  els.customWidth.value = state.customWidth;
-  els.customHeight.value = state.customHeight;
+  syncCustomSizeControls();
 
   const photo = selectedPhoto();
   const hasPhoto = Boolean(photo);
@@ -984,6 +1144,7 @@ function setPlatform(platformId) {
     state.ratio = platform.variants[0].id;
   }
   closeExportMenu();
+  animatePreviewTransition();
   scheduleRender();
 }
 
@@ -992,6 +1153,7 @@ function setRatio(ratio) {
   const platform = platformForRatio(ratio);
   if (platform) state.platform = platform.id;
   closeExportMenu();
+  animatePreviewTransition();
   scheduleRender();
 }
 
@@ -1063,6 +1225,18 @@ function hitGrid(point) {
   return null;
 }
 
+function clearSelectionFromFrameBlank(event) {
+  if (!state.selectedId) return;
+  if (event.target === els.canvas || event.target.closest(".canvas-add-button, .canvas-replace-button")) return;
+  clearPhotoSelection();
+}
+
+function clearSelectionFromStageBlank(event) {
+  if (!state.selectedId) return;
+  if (event.target.closest(".canvas-frame, .canvas-toolbar")) return;
+  clearPhotoSelection();
+}
+
 function startCanvasDrag(event) {
   if (!state.photos.length) return;
   event.preventDefault();
@@ -1072,10 +1246,7 @@ function startCanvasDrag(event) {
   const hit = hitGrid(point);
   if (!hit && activePointers.size === 1) {
     activePointers.delete(event.pointerId);
-    state.selectedId = null;
-    replaceButtonVisible = false;
-    resetAlignmentGuide();
-    scheduleRender();
+    clearPhotoSelection();
     return;
   }
 
@@ -1373,6 +1544,7 @@ function bindEvents() {
   document.querySelectorAll("[data-layout]").forEach((button) => {
     button.addEventListener("click", () => {
       state.layout = button.dataset.layout;
+      animatePreviewTransition();
       scheduleRender();
     });
   });
@@ -1381,6 +1553,7 @@ function bindEvents() {
     button.addEventListener("click", () => {
       state.tileOrientation = button.dataset.tileOrientation;
       state.layout = "auto";
+      animatePreviewTransition();
       scheduleRender();
     });
   });
@@ -1392,13 +1565,27 @@ function bindEvents() {
     });
   });
 
-  els.customWidth.addEventListener("input", () => {
-    state.customWidth = clamp(Number(els.customWidth.value) || 1600, 320, 4096);
-    scheduleRender();
+  [els.customWidth, els.customHeight].forEach((input) => {
+    input.addEventListener("focus", beginCustomSizeEdit);
+    input.addEventListener("input", () => handleCustomSizeInput(input));
+    input.addEventListener("blur", () => commitCustomSizeInput(input));
+    input.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      input.blur();
+    });
   });
 
-  els.customHeight.addEventListener("input", () => {
-    state.customHeight = clamp(Number(els.customHeight.value) || 1600, 320, 4096);
+  els.customSizeLock.addEventListener("click", () => {
+    if (isCustomSizeInput(document.activeElement)) commitCustomSizeInput(document.activeElement);
+
+    state.customSizeLocked = !state.customSizeLocked;
+    if (state.customSizeLocked) {
+      state.customHeight = state.customWidth;
+    }
+
+    clearCustomSizeWarning();
+    syncCustomSizeControls(true);
     scheduleRender();
   });
 
@@ -1435,6 +1622,8 @@ function bindEvents() {
   els.canvas.addEventListener("pointercancel", endCanvasDrag);
   els.canvas.addEventListener("wheel", handleWheel, { passive: false });
   els.canvas.addEventListener("dblclick", resetSelected);
+  els.canvasFrame.addEventListener("pointerdown", clearSelectionFromFrameBlank);
+  els.stageArea.addEventListener("pointerdown", clearSelectionFromStageBlank);
 
   window.addEventListener("resize", scheduleRender);
   window.addEventListener("orientationchange", () => {
