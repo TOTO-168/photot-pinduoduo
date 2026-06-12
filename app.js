@@ -511,19 +511,9 @@ function resizeCanvas() {
 }
 
 function syncMobileStageLock() {
-  if (window.innerWidth > 760) {
-    document.documentElement.style.removeProperty("--mobile-stage-top");
-    document.documentElement.style.removeProperty("--mobile-fixed-stack-height");
-    document.documentElement.style.removeProperty("--mobile-fixed-stack-space");
-    return;
-  }
-
-  const topbarBottom = Math.ceil(els.topbar.getBoundingClientRect().bottom);
-  const stageHeight = Math.ceil(els.stageArea.getBoundingClientRect().height);
-  const stageTop = topbarBottom + 8;
-  document.documentElement.style.setProperty("--mobile-stage-top", `${stageTop}px`);
-  document.documentElement.style.setProperty("--mobile-fixed-stack-height", `${stageTop + stageHeight}px`);
-  document.documentElement.style.setProperty("--mobile-fixed-stack-space", `${stageTop + stageHeight + 16}px`);
+  document.documentElement.style.removeProperty("--mobile-stage-top");
+  document.documentElement.style.removeProperty("--mobile-fixed-stack-height");
+  document.documentElement.style.removeProperty("--mobile-fixed-stack-space");
 }
 
 function scheduleRender() {
