@@ -83,11 +83,14 @@ const state = {
   customWidth: 1600,
   customHeight: 1600,
   layout: "auto",
-  gap: 18,
-  radius: 24,
-  background: "#f5f5f7",
+  tileOrientation: "landscape",
+  gap: 0,
+  radius: 0,
+  background: "#ffffff",
   photos: [],
   selectedId: null,
+  isResetting: false,
+  isExporting: false,
 };
 
 const els = {
@@ -110,6 +113,7 @@ const els = {
   radiusValue: document.querySelector("#radiusValue"),
   zoomRange: document.querySelector("#zoomRange"),
   zoomValue: document.querySelector("#zoomValue"),
+  zoomRow: document.querySelector("#zoomRow"),
   exportToggle: document.querySelector("#exportToggle"),
   exportMenu: document.querySelector("#exportMenu"),
   exportOptions: document.querySelectorAll("[data-export-format]"),
@@ -275,7 +279,47 @@ function gridRect(col, row, colSpan, rowSpan, cols, rows, width, height, gap) {
   };
 }
 
+function gridAspect(cols, rows, width, height, gap) {
+  const frame = gridRect(0, 0, 1, 1, cols, rows, width, height, gap);
+  return frame.w / frame.h;
+}
+
+function chooseOrientedGrid(count, width, height, gap, orientation) {
+  const target = orientation === "landscape" ? 1.45 : 1 / 1.45;
+  let best = { cols: 1, rows: count, score: Infinity };
+
+  for (let cols = 1; cols <= count; cols += 1) {
+    const rows = Math.ceil(count / cols);
+    const aspect = gridAspect(cols, rows, width, height, gap);
+    const emptyCells = cols * rows - count;
+    const mismatch =
+      orientation === "landscape"
+        ? Math.max(0, 1.08 - aspect)
+        : Math.max(0, aspect - 0.92);
+    const directionPenalty = mismatch > 0 ? 20 + mismatch * 10 : 0;
+    const shapePenalty = Math.abs(Math.log(aspect / target));
+    const score = directionPenalty + shapePenalty + emptyCells * 0.22 + Math.abs(cols - rows) * 0.015;
+
+    if (score < best.score) {
+      best = { cols, rows, score };
+    }
+  }
+
+  return best;
+}
+
+function makeOrientedFrames(count, width, height, gap, orientation) {
+  const { cols, rows } = chooseOrientedGrid(count, width, height, gap, orientation);
+  return Array.from({ length: count }, (_, index) =>
+    gridRect(index % cols, Math.floor(index / cols), 1, 1, cols, rows, width, height, gap),
+  );
+}
+
 function makeAutoFrames(count, width, height, gap) {
+  if (state.tileOrientation === "portrait" || state.tileOrientation === "landscape") {
+    return makeOrientedFrames(count, width, height, gap, state.tileOrientation);
+  }
+
   const aspect = width / height;
   const cols = Math.max(1, Math.ceil(Math.sqrt(count * aspect)));
   const rows = Math.max(1, Math.ceil(count / cols));
@@ -505,6 +549,17 @@ function updateButtons(selector, activeValue, dataKey) {
   });
 }
 
+function syncOrientationButtons() {
+  const isAutoLayout = state.layout === "auto";
+  document.querySelectorAll("[data-tile-orientation]").forEach((button) => {
+    const isActive = isAutoLayout && button.dataset.tileOrientation === state.tileOrientation;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+
+  document.querySelector("#orientationButtons")?.classList.toggle("is-passive", !isAutoLayout);
+}
+
 function renderRatioSubmenu() {
   const platform = platformById(state.platform);
   const key = state.ratio === "custom" ? "custom" : `${platform.id}:${state.ratio}`;
@@ -552,14 +607,24 @@ function revokeUserPhotoUrls(photos = state.photos) {
 }
 
 async function resetToDemoPhotos() {
-  els.clearDemo.disabled = true;
+  if (state.isResetting) return;
+  state.isResetting = true;
   closeExportMenu();
-  revokeUserPhotoUrls();
-  state.photos = await createDemoPhotos();
+  const previousPhotos = state.photos.slice();
   state.selectedId = null;
   dragState = null;
   replaceButtonVisible = false;
+  updateControls();
   scheduleRender();
+
+  try {
+    const demoPhotos = await createDemoPhotos();
+    state.photos = demoPhotos;
+    revokeUserPhotoUrls(previousPhotos);
+  } finally {
+    state.isResetting = false;
+    scheduleRender();
+  }
 }
 
 function syncReplaceButton() {
@@ -593,15 +658,20 @@ function syncReplaceButton() {
 }
 
 function updateControls() {
+  const isBusy = state.isResetting || state.isExporting;
   els.clearDemo.textContent = "清除";
-  els.clearDemo.disabled = state.photos.length === 0;
+  els.clearDemo.disabled = state.photos.length === 0 || isBusy;
   els.customSize.classList.toggle("is-open", state.ratio === "custom");
-  els.exportToggle.disabled = state.photos.length === 0;
-  if (state.photos.length === 0) closeExportMenu();
+  els.exportToggle.disabled = state.photos.length === 0 || isBusy;
+  els.exportOptions.forEach((button) => {
+    button.disabled = isBusy;
+  });
+  if (state.photos.length === 0 || isBusy) closeExportMenu();
 
   renderRatioSubmenu();
   syncRatioButtons();
   updateButtons("[data-layout]", state.layout, "layout");
+  syncOrientationButtons();
   document.querySelectorAll(".swatch").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.color === state.background);
   });
@@ -616,10 +686,13 @@ function updateControls() {
   const photo = selectedPhoto();
   const hasPhoto = Boolean(photo);
   els.zoomRange.disabled = !hasPhoto;
+  els.zoomRow.classList.toggle("is-disabled", !hasPhoto);
+  els.zoomRow.setAttribute("aria-disabled", String(!hasPhoto));
 
   if (photo) {
-    els.zoomRange.value = Math.round(photo.zoom * 100);
-    els.zoomValue.value = Math.round(photo.zoom * 100);
+    const zoomAmount = Math.round((photo.zoom - 1) * 100);
+    els.zoomRange.value = zoomAmount;
+    els.zoomValue.value = zoomAmount;
   }
 }
 
@@ -638,10 +711,17 @@ async function addFiles(fileList) {
     window.alert(`最多一次保留 ${MAX_PHOTOS} 張照片。`);
   }
 
+  let portraitCount = 0;
+  let landscapeCount = 0;
   for (const file of accepted) {
     const src = URL.createObjectURL(file);
     try {
       const img = await createImage(src);
+      if (img.width >= img.height) {
+        landscapeCount += 1;
+      } else {
+        portraitCount += 1;
+      }
       const photo = photoDefaults(img, state.photos.length, "user", file.name || `照片 ${state.photos.length + 1}`, src);
       state.photos.push(photo);
       state.selectedId = photo.id;
@@ -649,6 +729,11 @@ async function addFiles(fileList) {
     } catch {
       URL.revokeObjectURL(src);
     }
+  }
+
+  const loadedCount = portraitCount + landscapeCount;
+  if (loadedCount > 1 && state.layout === "auto" && portraitCount !== landscapeCount) {
+    state.tileOrientation = landscapeCount > portraitCount ? "landscape" : "portrait";
   }
 
   scheduleRender();
@@ -697,7 +782,7 @@ function setRatio(ratio) {
 function setSelectedNumber(key, value) {
   const photo = selectedPhoto();
   if (!photo) return;
-  if (key === "zoom") photo.zoom = clamp(value, 1, 2.6);
+  if (key === "zoom") photo.zoom = clamp(1 + value / 100, 1, 2.6);
   scheduleRender();
 }
 
@@ -789,32 +874,94 @@ function handleWheel(event) {
   scheduleRender();
 }
 
-function exportCollage(format) {
-  if (!state.photos.length) return;
+function createExportCanvas() {
   const { width, height } = getExportSize();
   const exportCanvas = document.createElement("canvas");
   exportCanvas.width = width;
   exportCanvas.height = height;
   const ctx = exportCanvas.getContext("2d");
   drawCollage(ctx, width, height, { exporting: true });
+  return exportCanvas;
+}
 
-  const mime = format === "jpg" ? "image/jpeg" : "image/png";
-  const ext = format === "jpg" ? "jpg" : "png";
-  exportCanvas.toBlob(
-    (blob) => {
-      if (!blob) return;
-      const link = document.createElement("a");
-      const url = URL.createObjectURL(blob);
-      link.href = url;
-      link.download = `Photot拼多多-${Date.now()}.${ext}`;
-      document.body.append(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-    },
-    mime,
-    format === "jpg" ? 0.94 : undefined,
-  );
+function canvasToBlob(canvas, mime, quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error("Export failed."));
+        }
+      },
+      mime,
+      quality,
+    );
+  });
+}
+
+function exportFileName(ext) {
+  return `Photot拼多多-${Date.now()}.${ext}`;
+}
+
+function downloadBlob(blob, ext) {
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.href = url;
+  link.download = exportFileName(ext);
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function shareOrDownloadBlob(blob) {
+  if (typeof File !== "function" || typeof navigator.share !== "function") {
+    downloadBlob(blob, "png");
+    return;
+  }
+
+  const file = new File([blob], exportFileName("png"), { type: "image/png" });
+  const shareData = {
+    files: [file],
+    title: "Photot拼多多",
+  };
+
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share(shareData);
+      return;
+    } catch (error) {
+      if (error?.name === "AbortError") return;
+    }
+  }
+
+  downloadBlob(blob, "png");
+}
+
+async function exportCollage(format) {
+  if (!state.photos.length || state.isResetting || state.isExporting) return;
+  state.isExporting = true;
+  updateControls();
+
+  try {
+    const exportCanvas = createExportCanvas();
+    if (format === "share") {
+      const blob = await canvasToBlob(exportCanvas, "image/png");
+      await shareOrDownloadBlob(blob);
+      return;
+    }
+
+    const mime = format === "jpg" ? "image/jpeg" : "image/png";
+    const ext = format === "jpg" ? "jpg" : "png";
+    const blob = await canvasToBlob(exportCanvas, mime, format === "jpg" ? 0.94 : undefined);
+    downloadBlob(blob, ext);
+  } catch {
+    window.alert("輸出失敗，請再試一次。");
+  } finally {
+    state.isExporting = false;
+    updateControls();
+  }
 }
 
 function toggleExportMenu() {
@@ -868,6 +1015,14 @@ function bindEvents() {
     });
   });
 
+  document.querySelectorAll("[data-tile-orientation]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.tileOrientation = button.dataset.tileOrientation;
+      state.layout = "auto";
+      scheduleRender();
+    });
+  });
+
   document.querySelectorAll(".swatch").forEach((button) => {
     button.addEventListener("click", () => {
       state.background = button.dataset.color;
@@ -895,7 +1050,7 @@ function bindEvents() {
     scheduleRender();
   });
 
-  els.zoomRange.addEventListener("input", () => setSelectedNumber("zoom", Number(els.zoomRange.value) / 100));
+  els.zoomRange.addEventListener("input", () => setSelectedNumber("zoom", Number(els.zoomRange.value)));
 
   els.clearDemo.addEventListener("click", resetToDemoPhotos);
 

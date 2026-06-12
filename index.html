@@ -11,7 +11,7 @@
       content="Photot拼多多是一個手機和桌面都能使用的本機照片拼貼工具。"
     />
     <title>Photot拼多多</title>
-    <link rel="stylesheet" href="./styles.css?v=20260612-1512" />
+    <link rel="stylesheet" href="./styles.css?v=20260612-1612" />
   </head>
   <body>
     <div class="app-shell">
@@ -37,6 +37,7 @@
               輸出
             </button>
             <div class="export-menu" id="exportMenu" hidden>
+              <button type="button" data-export-format="share">分享</button>
               <button type="button" data-export-format="png">PNG</button>
               <button type="button" data-export-format="jpg">JPG</button>
             </div>
@@ -73,6 +74,26 @@
           </section>
 
           <section class="tool-section grid-only">
+            <div class="orientation-toggle" id="orientationButtons" aria-label="照片方向">
+              <button
+                class="orientation-button"
+                data-tile-orientation="portrait"
+                type="button"
+                aria-label="直式格子"
+              >
+                <span class="orientation-icon portrait" aria-hidden="true"></span>
+                <span>直式</span>
+              </button>
+              <button
+                class="orientation-button is-active"
+                data-tile-orientation="landscape"
+                type="button"
+                aria-label="橫式格子"
+              >
+                <span class="orientation-icon landscape" aria-hidden="true"></span>
+                <span>橫式</span>
+              </button>
+            </div>
             <div class="layout-grid" id="layoutButtons">
               <button class="layout-button is-active" data-layout="auto" type="button" aria-label="自動">
                 <span class="layout-icon auto"></span>
@@ -92,24 +113,24 @@
           <section class="tool-section">
             <label class="range-row">
               <span>間距</span>
-              <input id="gapRange" type="range" min="0" max="64" value="18" />
-              <output id="gapValue">18</output>
+              <input id="gapRange" type="range" min="0" max="64" value="0" />
+              <output id="gapValue">0</output>
             </label>
             <label class="range-row">
               <span>圓角</span>
-              <input id="radiusRange" type="range" min="0" max="80" value="24" />
-              <output id="radiusValue">24</output>
+              <input id="radiusRange" type="range" min="0" max="80" value="0" />
+              <output id="radiusValue">0</output>
             </label>
-            <label class="range-row">
+            <label class="range-row" id="zoomRow">
               <span>縮放</span>
-              <input id="zoomRange" type="range" min="100" max="260" value="100" />
-              <output id="zoomValue">100</output>
+              <input id="zoomRange" type="range" min="0" max="160" value="0" />
+              <output id="zoomValue">0</output>
             </label>
             <div class="swatch-row">
               <span>背景</span>
               <div class="swatches" id="backgroundSwatches" aria-label="背景色">
-                <button class="swatch is-active" data-color="#f5f5f7" style="--swatch: #f5f5f7" type="button"></button>
-                <button class="swatch" data-color="#ffffff" style="--swatch: #ffffff" type="button"></button>
+                <button class="swatch" data-color="#f5f5f7" style="--swatch: #f5f5f7" type="button"></button>
+                <button class="swatch is-active" data-color="#ffffff" style="--swatch: #ffffff" type="button"></button>
                 <button class="swatch" data-color="#111827" style="--swatch: #111827" type="button"></button>
                 <button class="swatch" data-color="#dbeafe" style="--swatch: #dbeafe" type="button"></button>
                 <button class="swatch" data-color="#fee2e2" style="--swatch: #fee2e2" type="button"></button>
@@ -139,6 +160,6 @@
       </main>
     </div>
 
-    <script src="./app.js?v=20260612-1512"></script>
+    <script src="./app.js?v=20260612-1612"></script>
   </body>
 </html>

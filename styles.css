@@ -430,6 +430,57 @@ h1 {
   text-align: center;
 }
 
+.orientation-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-bottom: 8px;
+}
+
+.orientation-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 14px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.orientation-button.is-active {
+  border-color: rgba(0, 122, 255, 0.28);
+  color: var(--accent);
+  background: rgba(0, 122, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(0, 122, 255, 0.08);
+}
+
+.orientation-toggle.is-passive .orientation-button {
+  opacity: 0.56;
+}
+
+.orientation-icon {
+  display: block;
+  flex: 0 0 auto;
+  border-radius: 4px;
+  background: currentColor;
+}
+
+.orientation-icon.portrait {
+  width: 12px;
+  height: 18px;
+}
+
+.orientation-icon.landscape {
+  width: 20px;
+  height: 13px;
+}
+
 .layout-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -531,6 +582,10 @@ h1 {
   font-weight: 650;
 }
 
+.range-row.is-disabled {
+  opacity: 0.48;
+}
+
 input[type="range"] {
   width: 100%;
   accent-color: var(--accent);
@@ -583,6 +638,7 @@ output {
 
 .icon-button:hover,
 .layout-button:hover,
+.orientation-button:hover,
 .chip:hover,
 .variant-chip:hover,
 .button:hover {
@@ -675,8 +731,16 @@ button:disabled:hover {
   width: 20px;
   height: 20px;
   background: #fff;
+}
+
+.canvas-add-button::before {
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v12'/%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3Cpath d='M5 21h14'/%3E%3Cpath d='M5 17v4'/%3E%3Cpath d='M19 17v4'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v12'/%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3Cpath d='M5 21h14'/%3E%3Cpath d='M5 17v4'/%3E%3Cpath d='M19 17v4'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+.canvas-replace-button::before {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.35' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12a9 9 0 0 1-15.74 5.98L3 16'/%3E%3Cpath d='M3 21v-5h5'/%3E%3Cpath d='M3 12a9 9 0 0 1 15.74-5.98L21 8'/%3E%3Cpath d='M21 3v5h-5'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.35' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12a9 9 0 0 1-15.74 5.98L3 16'/%3E%3Cpath d='M3 21v-5h5'/%3E%3Cpath d='M3 12a9 9 0 0 1 15.74-5.98L21 8'/%3E%3Cpath d='M21 3v5h-5'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
 .canvas-add-button:hover,
