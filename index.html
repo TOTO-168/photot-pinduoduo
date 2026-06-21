@@ -162,12 +162,54 @@
             <div class="swatch-row">
               <span>背景</span>
               <div class="swatches" id="backgroundSwatches" aria-label="背景色">
-                <button class="swatch" data-color="#f5f5f7" style="--swatch: #f5f5f7" type="button"></button>
-                <button class="swatch is-active" data-color="#ffffff" style="--swatch: #ffffff" type="button"></button>
-                <button class="swatch" data-color="#111827" style="--swatch: #111827" type="button"></button>
-                <button class="swatch" data-color="#dbeafe" style="--swatch: #dbeafe" type="button"></button>
-                <button class="swatch" data-color="#fee2e2" style="--swatch: #fee2e2" type="button"></button>
-                <button class="swatch" data-color="#dcfce7" style="--swatch: #dcfce7" type="button"></button>
+                <button
+                  class="swatch"
+                  data-color="#f5f5f7"
+                  style="--swatch: #f5f5f7"
+                  type="button"
+                  aria-label="背景淺灰色"
+                  aria-pressed="false"
+                ></button>
+                <button
+                  class="swatch is-active"
+                  data-color="#ffffff"
+                  style="--swatch: #ffffff"
+                  type="button"
+                  aria-label="背景白色"
+                  aria-pressed="true"
+                ></button>
+                <button
+                  class="swatch"
+                  data-color="#111827"
+                  style="--swatch: #111827"
+                  type="button"
+                  aria-label="背景深色"
+                  aria-pressed="false"
+                ></button>
+                <button
+                  class="swatch"
+                  data-color="#dbeafe"
+                  style="--swatch: #dbeafe"
+                  type="button"
+                  aria-label="背景淺藍色"
+                  aria-pressed="false"
+                ></button>
+                <button
+                  class="swatch"
+                  data-color="#fee2e2"
+                  style="--swatch: #fee2e2"
+                  type="button"
+                  aria-label="背景淺粉色"
+                  aria-pressed="false"
+                ></button>
+                <button
+                  class="swatch"
+                  data-color="#dcfce7"
+                  style="--swatch: #dcfce7"
+                  type="button"
+                  aria-label="背景淺綠色"
+                  aria-pressed="false"
+                ></button>
               </div>
             </div>
           </section>
@@ -178,7 +220,13 @@
             <button class="button subtle" id="clearDemo" type="button">清除</button>
           </div>
           <div class="canvas-frame" id="canvasFrame">
-            <label class="canvas-add-button" for="photoInput" title="加入照片" aria-label="加入照片"></label>
+            <button
+              class="canvas-add-button"
+              id="addPhotoButton"
+              type="button"
+              title="加入照片"
+              aria-label="加入照片"
+            ></button>
             <button
               class="canvas-replace-button"
               id="replacePhotoButton"

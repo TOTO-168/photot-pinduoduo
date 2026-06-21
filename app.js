@@ -100,6 +100,7 @@ const state = {
   photos: [],
   selectedId: null,
   isResetting: false,
+  isImporting: false,
   isExporting: false,
 };
 
@@ -109,6 +110,7 @@ const els = {
   topbar: document.querySelector(".topbar"),
   input: document.querySelector("#photoInput"),
   replaceInput: document.querySelector("#replaceInput"),
+  addPhotoButton: document.querySelector("#addPhotoButton"),
   replacePhotoButton: document.querySelector("#replacePhotoButton"),
   canvas: document.querySelector("#collageCanvas"),
   canvasFrame: document.querySelector("#canvasFrame"),
@@ -152,6 +154,7 @@ let stableMobileViewport = { width: 0, height: 0 };
 let customSizeEditSnapshot = null;
 let previewTransitionTimer = 0;
 let replaceButtonTrackRaf = 0;
+let photoMutationToken = 0;
 let lastRenderedFrameSet = { frames: [], width: 0, height: 0, count: 0 };
 let frameTransition = {
   active: false,
@@ -181,6 +184,15 @@ function normalizeCustomSize(value) {
 
 function uid() {
   return globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+}
+
+function nextPhotoMutationToken() {
+  photoMutationToken += 1;
+  return photoMutationToken;
+}
+
+function isCurrentPhotoMutation(token) {
+  return token === photoMutationToken;
 }
 
 function cloneFrames(frames) {
@@ -1024,14 +1036,26 @@ function resizeCanvas() {
     width = height * aspect;
   }
 
-  preview.width = Math.round(width);
-  preview.height = Math.round(height);
-  preview.dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  const nextWidth = Math.round(width);
+  const nextHeight = Math.round(height);
+  const nextDpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  const backingWidth = Math.round(nextWidth * nextDpr);
+  const backingHeight = Math.round(nextHeight * nextDpr);
+  const cssChanged = preview.width !== nextWidth || preview.height !== nextHeight;
+  const backingChanged = els.canvas.width !== backingWidth || els.canvas.height !== backingHeight;
 
-  els.canvas.style.width = `${preview.width}px`;
-  els.canvas.style.height = `${preview.height}px`;
-  els.canvas.width = Math.round(preview.width * preview.dpr);
-  els.canvas.height = Math.round(preview.height * preview.dpr);
+  preview.width = nextWidth;
+  preview.height = nextHeight;
+  preview.dpr = nextDpr;
+
+  if (cssChanged) {
+    els.canvas.style.width = `${preview.width}px`;
+    els.canvas.style.height = `${preview.height}px`;
+  }
+  if (backingChanged) {
+    els.canvas.width = backingWidth;
+    els.canvas.height = backingHeight;
+  }
 
   const ctx = els.canvas.getContext("2d");
   ctx.setTransform(preview.dpr, 0, 0, preview.dpr, 0, 0);
@@ -1118,8 +1142,10 @@ function revokeUserPhotoUrls(photos = state.photos) {
 }
 
 async function resetToDemoPhotos() {
-  if (state.isResetting) return;
+  if (state.isResetting || state.isExporting) return;
+  const token = nextPhotoMutationToken();
   state.isResetting = true;
+  state.isImporting = false;
   closeExportMenu();
   const previousPhotos = state.photos.slice();
   state.selectedId = null;
@@ -1133,6 +1159,7 @@ async function resetToDemoPhotos() {
 
   try {
     const demoPhotos = await createDemoPhotos();
+    if (!isCurrentPhotoMutation(token)) return;
     state.photos = demoPhotos;
     revokeUserPhotoUrls(previousPhotos);
   } finally {
@@ -1186,9 +1213,11 @@ function trackReplaceButton(duration = 300) {
 }
 
 function updateControls() {
-  const isBusy = state.isResetting || state.isExporting;
+  const isBusy = state.isResetting || state.isImporting || state.isExporting;
   els.clearDemo.textContent = "清除";
   els.clearDemo.disabled = state.photos.length === 0 || isBusy;
+  els.addPhotoButton.disabled = isBusy;
+  els.replacePhotoButton.disabled = isBusy || selectedPhotoIndex() < 0;
   els.customSize.classList.toggle("is-open", state.ratio === "custom");
   els.exportToggle.disabled = state.photos.length === 0 || isBusy;
   els.exportOptions.forEach((button) => {
@@ -1201,7 +1230,9 @@ function updateControls() {
   updateButtons("[data-layout]", state.layout, "layout");
   syncOrientationButtons();
   document.querySelectorAll(".swatch").forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.color === state.background);
+    const isActive = button.dataset.color === state.background;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
   });
 
   els.gapRange.value = state.gap;
@@ -1224,67 +1255,120 @@ function updateControls() {
 }
 
 async function addFiles(fileList) {
+  if (state.isResetting || state.isImporting || state.isExporting) return;
   const files = Array.from(fileList).filter((file) => file.type.startsWith("image/"));
   if (!files.length) return;
 
-  if (hasOnlyDemoPhotos()) {
-    state.photos = [];
-    state.selectedId = null;
-  }
-
-  const availableSlots = MAX_PHOTOS - state.photos.length;
+  const shouldReplaceDemo = hasOnlyDemoPhotos();
+  const basePhotos = shouldReplaceDemo ? [] : state.photos.slice();
+  const previousPhotos = shouldReplaceDemo ? state.photos.slice() : [];
+  const availableSlots = Math.max(0, MAX_PHOTOS - basePhotos.length);
   const accepted = files.slice(0, availableSlots);
   if (files.length > availableSlots) {
     window.alert(`最多一次保留 ${MAX_PHOTOS} 張照片。`);
   }
+  if (!accepted.length) return;
 
+  const token = nextPhotoMutationToken();
+  const loadedPhotos = [];
   let portraitCount = 0;
   let landscapeCount = 0;
-  for (const file of accepted) {
-    const src = URL.createObjectURL(file);
-    try {
-      const img = await createImage(src);
-      if (img.width >= img.height) {
-        landscapeCount += 1;
-      } else {
-        portraitCount += 1;
+  state.isImporting = true;
+  closeExportMenu();
+  updateControls();
+
+  try {
+    for (const file of accepted) {
+      const src = URL.createObjectURL(file);
+      try {
+        const img = await createImage(src);
+        if (!isCurrentPhotoMutation(token)) {
+          URL.revokeObjectURL(src);
+          return;
+        }
+
+        if (img.width >= img.height) {
+          landscapeCount += 1;
+        } else {
+          portraitCount += 1;
+        }
+
+        const photo = photoDefaults(
+          img,
+          basePhotos.length + loadedPhotos.length,
+          "user",
+          file.name || `照片 ${basePhotos.length + loadedPhotos.length + 1}`,
+          src,
+        );
+        loadedPhotos.push(photo);
+      } catch {
+        URL.revokeObjectURL(src);
       }
-      const photo = photoDefaults(img, state.photos.length, "user", file.name || `照片 ${state.photos.length + 1}`, src);
-      state.photos.push(photo);
-      state.selectedId = photo.id;
-      replaceButtonVisible = true;
-    } catch {
-      URL.revokeObjectURL(src);
     }
-  }
 
-  const loadedCount = portraitCount + landscapeCount;
-  if (loadedCount > 1 && state.layout === "auto" && portraitCount !== landscapeCount) {
-    state.tileOrientation = landscapeCount > portraitCount ? "landscape" : "portrait";
-  }
+    if (!isCurrentPhotoMutation(token)) return;
+    if (!loadedPhotos.length) return;
 
-  scheduleRender();
+    state.photos = basePhotos.concat(loadedPhotos);
+    state.selectedId = loadedPhotos[loadedPhotos.length - 1].id;
+    replaceButtonVisible = true;
+    revokeUserPhotoUrls(previousPhotos);
+
+    const loadedCount = portraitCount + landscapeCount;
+    if (loadedCount > 1 && state.layout === "auto" && portraitCount !== landscapeCount) {
+      state.tileOrientation = landscapeCount > portraitCount ? "landscape" : "portrait";
+    }
+  } finally {
+    if (!isCurrentPhotoMutation(token)) revokeUserPhotoUrls(loadedPhotos);
+    if (isCurrentPhotoMutation(token)) state.isImporting = false;
+    scheduleRender();
+  }
 }
 
 async function replaceSelectedPhoto(fileList) {
+  if (state.isResetting || state.isImporting || state.isExporting) return;
   const file = Array.from(fileList).find((item) => item.type.startsWith("image/"));
   const selectedIndex = selectedPhotoIndex();
   if (!file || selectedIndex < 0) return;
 
   const previousPhoto = state.photos[selectedIndex];
+  const token = nextPhotoMutationToken();
   const src = URL.createObjectURL(file);
+  state.isImporting = true;
+  closeExportMenu();
+  updateControls();
+
   try {
     const img = await createImage(src);
+    if (!isCurrentPhotoMutation(token)) {
+      URL.revokeObjectURL(src);
+      return;
+    }
+
+    const currentIndex = state.photos.findIndex((photo) => photo.id === previousPhoto.id);
+    if (currentIndex < 0) {
+      URL.revokeObjectURL(src);
+      return;
+    }
+
     if (previousPhoto.source === "user") URL.revokeObjectURL(previousPhoto.src);
 
-    const nextPhoto = photoDefaults(img, selectedIndex, "user", file.name || previousPhoto.name || `照片 ${selectedIndex + 1}`, src);
+    const nextPhoto = photoDefaults(
+      img,
+      currentIndex,
+      "user",
+      file.name || previousPhoto.name || `照片 ${currentIndex + 1}`,
+      src,
+    );
     nextPhoto.id = previousPhoto.id;
-    state.photos[selectedIndex] = nextPhoto;
+    state.photos[currentIndex] = nextPhoto;
     state.selectedId = nextPhoto.id;
     replaceButtonVisible = true;
-    scheduleRender();
   } catch {
     URL.revokeObjectURL(src);
+  } finally {
+    if (isCurrentPhotoMutation(token)) state.isImporting = false;
+    scheduleRender();
   }
 }
 
@@ -1596,7 +1680,7 @@ function downloadBlob(blob, ext) {
   document.body.append(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 async function shareOrDownloadBlob(blob) {
@@ -1624,7 +1708,7 @@ async function shareOrDownloadBlob(blob) {
 }
 
 async function exportCollage(format) {
-  if (!state.photos.length || state.isResetting || state.isExporting) return;
+  if (!state.photos.length || state.isResetting || state.isImporting || state.isExporting) return;
   state.isExporting = true;
   updateControls();
 
@@ -1649,7 +1733,7 @@ async function exportCollage(format) {
 }
 
 function toggleExportMenu() {
-  if (!state.photos.length) return;
+  if (!state.photos.length || state.isResetting || state.isImporting || state.isExporting) return;
   setExportMenuOpen(!els.exportMenu.classList.contains("is-open"));
 }
 
@@ -1675,9 +1759,15 @@ function bindEvents() {
     event.target.value = "";
   });
 
+  els.addPhotoButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (state.isResetting || state.isImporting || state.isExporting) return;
+    els.input.click();
+  });
+
   els.replacePhotoButton.addEventListener("click", (event) => {
     event.stopPropagation();
-    if (selectedPhotoIndex() < 0) return;
+    if (selectedPhotoIndex() < 0 || state.isResetting || state.isImporting || state.isExporting) return;
     els.replaceInput.click();
   });
 
