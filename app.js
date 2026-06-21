@@ -1,4 +1,4 @@
-const APP_VERSION = "1.0.1";
+const APP_VERSION = "1.0.2";
 const MAX_PHOTOS = 20;
 const SOCIAL_PLATFORMS = [
   {
