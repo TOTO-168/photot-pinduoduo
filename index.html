@@ -11,7 +11,7 @@
       content="Photot拼多多是一個手機和桌面都能使用的本機照片拼貼工具。"
     />
     <title>Photot拼多多</title>
-    <link rel="stylesheet" href="./styles.css?v=20260621-1330" />
+    <link rel="stylesheet" href="./styles.css?v=20260719-2337" />
   </head>
   <body>
     <div class="app-shell">
@@ -52,7 +52,14 @@
               <button class="chip is-active" data-platform="common" type="button">常用</button>
               <button class="chip" data-platform="instagram" type="button">IG</button>
               <button class="chip" data-platform="facebook" type="button">FB</button>
-              <button class="chip" data-platform="threads" type="button">Threads</button>
+              <button
+                class="chip"
+                data-platform="threads"
+                title="Threads 未公布固定像素規格，以下為建議尺寸"
+                type="button"
+              >
+                Threads
+              </button>
               <button class="chip" data-platform="x" type="button">X</button>
               <button class="chip" data-platform="tiktok" type="button">TikTok</button>
               <button class="chip" data-platform="linkedin" type="button">LinkedIn</button>
@@ -61,7 +68,7 @@
               <button class="chip" data-ratio="custom" type="button">自訂</button>
             </div>
             <div class="ratio-submenu" id="ratioSubmenu" aria-label="社群尺寸"></div>
-            <div class="custom-size" id="customSize">
+            <div class="custom-size" id="customSize" aria-hidden="true" hidden>
               <label>
                 <span>寬</span>
                 <span class="size-field">
@@ -217,7 +224,7 @@
 
         <section class="stage-area" aria-label="拼圖畫布">
           <div class="canvas-toolbar">
-            <button class="button subtle" id="clearDemo" type="button">清除</button>
+            <button class="button subtle" id="clearButton" type="button">清除</button>
           </div>
           <div class="canvas-frame" id="canvasFrame">
             <button
@@ -241,6 +248,6 @@
       </main>
     </div>
 
-    <script src="./app.js?v=20260621-1330"></script>
+    <script src="./app.js?v=20260719-2359"></script>
   </body>
 </html>
