@@ -1,4 +1,4 @@
-const APP_VERSION = "1.0.2";
+const APP_VERSION = "1.0.4";
 const MAX_PHOTOS = 20;
 const SOCIAL_PLATFORMS = [
   {
@@ -9,13 +9,14 @@ const SOCIAL_PLATFORMS = [
       { id: "common-story", label: "9:16", size: "1080 x 1920", width: 1080, height: 1920 },
       { id: "common-landscape", label: "16:9", size: "1920 x 1080", width: 1920, height: 1080 },
       { id: "common-a4", label: "A4", size: "2480 x 3508", width: 2480, height: 3508 },
-      { id: "common-a3", label: "A3", size: "3508 x 4961", width: 3508, height: 4961 },
+      { id: "common-a3", label: "A3（約 248 DPI）", size: "2896 x 4096", width: 2896, height: 4096 },
     ],
   },
   {
     id: "instagram",
     variants: [
-      { id: "instagram-portrait", label: "貼文直式", size: "1080 x 1350", width: 1080, height: 1350 },
+      { id: "instagram-portrait-tall", label: "貼文直式 3:4", size: "1080 x 1440", width: 1080, height: 1440 },
+      { id: "instagram-portrait", label: "貼文直式 4:5", size: "1080 x 1350", width: 1080, height: 1350 },
       { id: "instagram-square", label: "正方形", size: "1080 x 1080", width: 1080, height: 1080 },
       { id: "instagram-landscape", label: "橫式", size: "1080 x 566", width: 1080, height: 566 },
       { id: "instagram-story", label: "限動 / Reels", size: "1080 x 1920", width: 1080, height: 1920 },
@@ -33,9 +34,9 @@ const SOCIAL_PLATFORMS = [
   {
     id: "threads",
     variants: [
-      { id: "threads-portrait", label: "貼文直式", size: "1080 x 1350", width: 1080, height: 1350 },
-      { id: "threads-square", label: "正方形", size: "1080 x 1080", width: 1080, height: 1080 },
-      { id: "threads-landscape", label: "橫式", size: "1200 x 628", width: 1200, height: 628 },
+      { id: "threads-portrait", label: "建議直式", size: "1080 x 1350", width: 1080, height: 1350 },
+      { id: "threads-square", label: "建議正方形", size: "1080 x 1080", width: 1080, height: 1080 },
+      { id: "threads-landscape", label: "建議橫式", size: "1200 x 628", width: 1200, height: 628 },
     ],
   },
   {
@@ -71,6 +72,7 @@ const DEFAULT_RATIO = "common-square";
 const CUSTOM_SIZE_DEFAULT = 3000;
 const CUSTOM_SIZE_MIN = 100;
 const CUSTOM_SIZE_MAX = 4096;
+const MAX_PHOTO_SIDE = 2560;
 const CUSTOM_SIZE_WARNING_TEXT = "最低要三位數";
 const PLACEHOLDER_COLORS = ["#f8fafc", "#eef6ff", "#f3f8ef", "#fff4e6", "#fff0f5", "#f3f0ff"];
 const MIN_FRAME_SIDE_BASE = 24;
@@ -115,7 +117,7 @@ const els = {
   canvas: document.querySelector("#collageCanvas"),
   canvasFrame: document.querySelector("#canvasFrame"),
   stageArea: document.querySelector(".stage-area"),
-  clearDemo: document.querySelector("#clearDemo"),
+  clearButton: document.querySelector("#clearButton"),
   ratioSubmenu: document.querySelector("#ratioSubmenu"),
   customSize: document.querySelector("#customSize"),
   customWidth: document.querySelector("#customWidth"),
@@ -136,6 +138,8 @@ const els = {
 
 let preview = { width: 0, height: 0, dpr: 1 };
 let rafId = 0;
+let renderNeedsResize = false;
+let renderNeedsControls = false;
 let dragState = null;
 let pinchState = null;
 let activePointers = new Map();
@@ -180,6 +184,14 @@ function normalizeCustomSize(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return CUSTOM_SIZE_DEFAULT;
   return clamp(Math.round(number), CUSTOM_SIZE_MIN, CUSTOM_SIZE_MAX);
+}
+
+function fitImageSize(width, height, maxSide = MAX_PHOTO_SIDE) {
+  const scale = Math.min(1, maxSide / Math.max(width, height));
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
 }
 
 function uid() {
@@ -356,7 +368,7 @@ function clearPhotoSelection() {
   dragState = null;
   pinchState = null;
   resetAlignmentGuide();
-  scheduleRender();
+  scheduleRender({ resize: false });
 }
 
 function platformById(platformId) {
@@ -470,7 +482,36 @@ function createImage(src) {
   });
 }
 
-function photoDefaults(img, index, source, name, src) {
+async function createUserImage(file) {
+  const src = URL.createObjectURL(file);
+
+  try {
+    const img = await createImage(src);
+    const size = fitImageSize(img.width, img.height);
+    if (size.width === img.width && size.height === img.height) return { img, src };
+
+    // ponytail: 2560px bounds mobile memory; retain originals only if print-quality single-photo export becomes a requirement.
+    const canvas = document.createElement("canvas");
+    canvas.width = size.width;
+    canvas.height = size.height;
+    canvas.getContext("2d").drawImage(img, 0, 0, size.width, size.height);
+    URL.revokeObjectURL(src);
+    return { img: canvas, src: "" };
+  } catch (error) {
+    URL.revokeObjectURL(src);
+    throw error;
+  }
+}
+
+function releasePhotoImage(photo) {
+  if (photo.src) URL.revokeObjectURL(photo.src);
+  if (photo.img instanceof HTMLCanvasElement) {
+    photo.img.width = 0;
+    photo.img.height = 0;
+  }
+}
+
+function photoDefaults(img, source, name, src) {
   return {
     id: uid(),
     name,
@@ -514,7 +555,7 @@ async function createDemoPhotos() {
     drawPlaceholderFill(ctx, index, sampleCanvas.width, sampleCanvas.height);
     const src = sampleCanvas.toDataURL("image/jpeg", 0.92);
     const img = await createImage(src);
-    photos.push(photoDefaults(img, index, "demo", `位置 ${index + 1}`, src));
+    photos.push(photoDefaults(img, "demo", `位置 ${index + 1}`, src));
   }
   return photos;
 }
@@ -905,7 +946,7 @@ function placeholderFontSize(frames, canvasWidth, canvasHeight) {
   return Math.round(Math.max(18, Math.min(smallestFrameSide * 0.42, canvasSide * 0.16)));
 }
 
-function drawPhotoFrame(ctx, photo, frame, canvasWidth, canvasHeight, exporting = false, placeholderNumber = null, fontSize = 0) {
+function drawPhotoFrame(ctx, photo, frame, canvasWidth, canvasHeight, placeholderNumber = null, fontSize = 0) {
   const radius = Math.min(scaledSetting(state.radius, canvasWidth, canvasHeight), frame.w / 2, frame.h / 2);
   const offsets = constrainedPhotoOffsets(photo, frame);
   ctx.save();
@@ -986,7 +1027,7 @@ function framesForCollage(count, width, height, exporting) {
     count,
   };
 
-  if (frameTransition.active) scheduleRender();
+  if (frameTransition.active) scheduleCanvasRender();
   return frames;
 }
 
@@ -1004,7 +1045,7 @@ function drawCollage(ctx, width, height, options = {}) {
   const frames = framesForCollage(state.photos.length, width, height, exporting);
   const demoFontSize = placeholderFontSize(frames, width, height);
   state.photos.forEach((photo, index) => {
-    drawPhotoFrame(ctx, photo, frames[index], width, height, exporting, index + 1, demoFontSize);
+    drawPhotoFrame(ctx, photo, frames[index], width, height, index + 1, demoFontSize);
   });
 
   const selectedIndex = selectedPhotoIndex();
@@ -1057,30 +1098,41 @@ function resizeCanvas() {
     els.canvas.height = backingHeight;
   }
 
+  drawPreview();
+}
+
+function drawPreview() {
+  if (!preview.width || !preview.height) return;
   const ctx = els.canvas.getContext("2d");
   ctx.setTransform(preview.dpr, 0, 0, preview.dpr, 0, 0);
   drawCollage(ctx, preview.width, preview.height);
   syncReplaceButton();
-  syncMobileStageLock();
 }
 
-function syncMobileStageLock() {
-  document.documentElement.style.removeProperty("--mobile-stage-top");
-  document.documentElement.style.removeProperty("--mobile-fixed-stack-height");
-  document.documentElement.style.removeProperty("--mobile-fixed-stack-space");
-}
-
-function scheduleRender() {
+function scheduleRender({ resize = true, controls = true } = {}) {
+  renderNeedsResize ||= resize;
+  renderNeedsControls ||= controls;
   cancelAnimationFrame(rafId);
   rafId = requestAnimationFrame(() => {
-    resizeCanvas();
-    updateControls();
+    const shouldResize = renderNeedsResize || !preview.width;
+    const shouldUpdateControls = renderNeedsControls;
+    renderNeedsResize = false;
+    renderNeedsControls = false;
+    if (shouldResize) resizeCanvas();
+    else drawPreview();
+    if (shouldUpdateControls) updateControls();
   });
+}
+
+function scheduleCanvasRender() {
+  scheduleRender({ resize: false, controls: false });
 }
 
 function updateButtons(selector, activeValue, dataKey) {
   document.querySelectorAll(selector).forEach((button) => {
-    button.classList.toggle("is-active", button.dataset[dataKey] === activeValue);
+    const isActive = button.dataset[dataKey] === activeValue;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
   });
 }
 
@@ -1111,7 +1163,9 @@ function renderRatioSubmenu() {
     button.type = "button";
     button.dataset.ratio = variant.id;
     button.title = variant.size;
-    button.classList.toggle("is-active", variant.id === state.ratio);
+    const isActive = variant.id === state.ratio;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
 
     const label = document.createElement("span");
     label.textContent = variant.label;
@@ -1126,7 +1180,9 @@ function renderRatioSubmenu() {
 
 function syncRatioButtons() {
   document.querySelectorAll("[data-platform]").forEach((button) => {
-    button.classList.toggle("is-active", state.ratio !== "custom" && button.dataset.platform === state.platform);
+    const isActive = state.ratio !== "custom" && button.dataset.platform === state.platform;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
   });
   updateButtons("[data-ratio]", state.ratio, "ratio");
 }
@@ -1137,11 +1193,27 @@ function hasOnlyDemoPhotos() {
 
 function revokeUserPhotoUrls(photos = state.photos) {
   photos.forEach((photo) => {
-    if (photo.source === "user") URL.revokeObjectURL(photo.src);
+    if (photo.source === "user") releasePhotoImage(photo);
   });
 }
 
-async function resetToDemoPhotos() {
+function clearPhotos() {
+  if (state.isResetting || state.isImporting || state.isExporting) return;
+  nextPhotoMutationToken();
+  const previousPhotos = state.photos.slice();
+  state.photos = [];
+  state.selectedId = null;
+  dragState = null;
+  pinchState = null;
+  activePointers.clear();
+  resetAlignmentGuide();
+  replaceButtonVisible = false;
+  closeExportMenu();
+  revokeUserPhotoUrls(previousPhotos);
+  scheduleRender();
+}
+
+async function loadDemoPhotos() {
   if (state.isResetting || state.isExporting) return;
   const token = nextPhotoMutationToken();
   state.isResetting = true;
@@ -1214,11 +1286,14 @@ function trackReplaceButton(duration = 300) {
 
 function updateControls() {
   const isBusy = state.isResetting || state.isImporting || state.isExporting;
-  els.clearDemo.textContent = "清除";
-  els.clearDemo.disabled = state.photos.length === 0 || isBusy;
+  els.clearButton.textContent = "清除";
+  els.clearButton.disabled = state.photos.length === 0 || isBusy;
   els.addPhotoButton.disabled = isBusy;
   els.replacePhotoButton.disabled = isBusy || selectedPhotoIndex() < 0;
-  els.customSize.classList.toggle("is-open", state.ratio === "custom");
+  const isCustomSizeOpen = state.ratio === "custom";
+  els.customSize.classList.toggle("is-open", isCustomSizeOpen);
+  els.customSize.hidden = !isCustomSizeOpen;
+  els.customSize.setAttribute("aria-hidden", String(!isCustomSizeOpen));
   els.exportToggle.disabled = state.photos.length === 0 || isBusy;
   els.exportOptions.forEach((button) => {
     button.disabled = isBusy;
@@ -1279,31 +1354,27 @@ async function addFiles(fileList) {
 
   try {
     for (const file of accepted) {
-      const src = URL.createObjectURL(file);
       try {
-        const img = await createImage(src);
+        const image = await createUserImage(file);
         if (!isCurrentPhotoMutation(token)) {
-          URL.revokeObjectURL(src);
+          releasePhotoImage(image);
           return;
         }
 
-        if (img.width >= img.height) {
+        if (image.img.width >= image.img.height) {
           landscapeCount += 1;
         } else {
           portraitCount += 1;
         }
 
         const photo = photoDefaults(
-          img,
-          basePhotos.length + loadedPhotos.length,
+          image.img,
           "user",
           file.name || `照片 ${basePhotos.length + loadedPhotos.length + 1}`,
-          src,
+          image.src,
         );
         loadedPhotos.push(photo);
-      } catch {
-        URL.revokeObjectURL(src);
-      }
+      } catch {}
     }
 
     if (!isCurrentPhotoMutation(token)) return;
@@ -1333,39 +1404,37 @@ async function replaceSelectedPhoto(fileList) {
 
   const previousPhoto = state.photos[selectedIndex];
   const token = nextPhotoMutationToken();
-  const src = URL.createObjectURL(file);
   state.isImporting = true;
   closeExportMenu();
   updateControls();
 
   try {
-    const img = await createImage(src);
+    const image = await createUserImage(file);
     if (!isCurrentPhotoMutation(token)) {
-      URL.revokeObjectURL(src);
+      releasePhotoImage(image);
       return;
     }
 
     const currentIndex = state.photos.findIndex((photo) => photo.id === previousPhoto.id);
     if (currentIndex < 0) {
-      URL.revokeObjectURL(src);
+      releasePhotoImage(image);
       return;
     }
 
-    if (previousPhoto.source === "user") URL.revokeObjectURL(previousPhoto.src);
+    if (previousPhoto.source === "user") releasePhotoImage(previousPhoto);
 
     const nextPhoto = photoDefaults(
-      img,
-      currentIndex,
+      image.img,
       "user",
       file.name || previousPhoto.name || `照片 ${currentIndex + 1}`,
-      src,
+      image.src,
     );
     nextPhoto.id = previousPhoto.id;
     state.photos[currentIndex] = nextPhoto;
     state.selectedId = nextPhoto.id;
     replaceButtonVisible = true;
   } catch {
-    URL.revokeObjectURL(src);
+    // Unsupported images are ignored so the current collage remains intact.
   } finally {
     if (isCurrentPhotoMutation(token)) state.isImporting = false;
     scheduleRender();
@@ -1397,7 +1466,8 @@ function setSelectedNumber(key, value) {
   if (!photo) return;
   if (key === "zoom") photo.zoom = clamp(1 + value / 100, 1, 2.6);
   constrainSelectedPhotoToFrame();
-  scheduleRender();
+  syncZoomControls();
+  scheduleCanvasRender();
 }
 
 function resetSelected() {
@@ -1406,7 +1476,8 @@ function resetSelected() {
   photo.zoom = 1;
   photo.offsetX = 0;
   photo.offsetY = 0;
-  scheduleRender();
+  syncZoomControls();
+  scheduleCanvasRender();
 }
 
 function canvasPoint(event) {
@@ -1491,7 +1562,6 @@ function startCanvasDrag(event) {
     const offsets = applyPhotoBoundsAndSnap(hit.photo, hit.frame, hit.photo.offsetX, hit.photo.offsetY, true);
     dragState = {
       id: hit.photo.id,
-      type: "grid-pan",
       pointerId: event.pointerId,
       lastX: point.x,
       lastY: point.y,
@@ -1503,7 +1573,7 @@ function startCanvasDrag(event) {
 
   els.canvas.setPointerCapture(event.pointerId);
   if (activePointers.size >= 2) beginPinchGesture();
-  scheduleRender();
+  scheduleRender({ resize: false });
 }
 
 function beginPinchGesture() {
@@ -1556,7 +1626,7 @@ function updatePinchGesture() {
   pinchState.rawOffsetX = offsets.rawOffsetX;
   pinchState.rawOffsetY = offsets.rawOffsetY;
   syncZoomControls();
-  scheduleRender();
+  scheduleCanvasRender();
 }
 
 function moveCanvasDrag(event) {
@@ -1588,7 +1658,7 @@ function moveCanvasDrag(event) {
 
   dragState.lastX = point.x;
   dragState.lastY = point.y;
-  scheduleRender();
+  scheduleCanvasRender();
 }
 
 function endCanvasDrag(event) {
@@ -1601,7 +1671,7 @@ function endCanvasDrag(event) {
 
   if (activePointers.size >= 2) {
     beginPinchGesture();
-    scheduleRender();
+    scheduleCanvasRender();
     return;
   }
 
@@ -1614,7 +1684,6 @@ function endCanvasDrag(event) {
       const offsets = applyPhotoBoundsAndSnap(photo, frame, photo.offsetX, photo.offsetY, true);
       dragState = {
         id: photo.id,
-        type: "grid-pan",
         pointerId,
         lastX: point.x,
         lastY: point.y,
@@ -1622,14 +1691,14 @@ function endCanvasDrag(event) {
         rawOffsetX: offsets.rawOffsetX,
         rawOffsetY: offsets.rawOffsetY,
       };
-      scheduleRender();
+      scheduleCanvasRender();
       return;
     }
   }
 
   dragState = null;
   resetAlignmentGuide();
-  scheduleRender();
+  scheduleCanvasRender();
 }
 
 function handleWheel(event) {
@@ -1639,7 +1708,8 @@ function handleWheel(event) {
   const nextZoom = photo.zoom + (event.deltaY > 0 ? -0.04 : 0.04);
   photo.zoom = clamp(nextZoom, 1, 2.6);
   constrainSelectedPhotoToFrame();
-  scheduleRender();
+  syncZoomControls();
+  scheduleCanvasRender();
 }
 
 function createExportCanvas() {
@@ -1787,7 +1857,7 @@ function bindEvents() {
       state.layout = button.dataset.layout;
       beginFrameTransition(FRAME_TRANSITION_MS);
       animatePreviewTransition();
-      scheduleRender();
+      scheduleRender({ resize: false });
     });
   });
 
@@ -1797,14 +1867,14 @@ function bindEvents() {
       state.layout = "auto";
       beginFrameTransition(FRAME_TRANSITION_MS);
       animatePreviewTransition();
-      scheduleRender();
+      scheduleRender({ resize: false });
     });
   });
 
   document.querySelectorAll(".swatch").forEach((button) => {
     button.addEventListener("click", () => {
       state.background = button.dataset.color;
-      scheduleRender();
+      scheduleRender({ resize: false });
     });
   });
 
@@ -1834,18 +1904,20 @@ function bindEvents() {
 
   els.gapRange.addEventListener("input", () => {
     state.gap = Number(els.gapRange.value);
+    els.gapValue.value = state.gap;
     beginFrameTransition(GAP_TRANSITION_MS);
-    scheduleRender();
+    scheduleCanvasRender();
   });
 
   els.radiusRange.addEventListener("input", () => {
     state.radius = Number(els.radiusRange.value);
-    scheduleRender();
+    els.radiusValue.value = state.radius;
+    scheduleCanvasRender();
   });
 
   els.zoomRange.addEventListener("input", () => setSelectedNumber("zoom", Number(els.zoomRange.value)));
 
-  els.clearDemo.addEventListener("click", resetToDemoPhotos);
+  els.clearButton.addEventListener("click", clearPhotos);
 
   els.exportToggle.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -1869,7 +1941,7 @@ function bindEvents() {
   els.canvasFrame.addEventListener("pointerdown", clearSelectionFromFrameBlank);
   els.stageArea.addEventListener("pointerdown", clearSelectionFromStageBlank);
 
-  window.addEventListener("resize", scheduleRender);
+  window.addEventListener("resize", () => scheduleRender());
   window.addEventListener("orientationchange", () => {
     resetMobileViewportLock();
     scheduleRender();
@@ -1903,7 +1975,16 @@ async function init() {
   if (els.appVersion) els.appVersion.textContent = `v${APP_VERSION}`;
   bindEvents();
   closeExportMenu();
-  await resetToDemoPhotos();
+  await loadDemoPhotos();
+
+  if (new URLSearchParams(window.location.search).has("self-test")) {
+    const fitted = fitImageSize(6000, 3000);
+    if (fitted.width !== 2560 || fitted.height !== 1280) throw new Error("Image resize self-check failed.");
+    if (Object.values(EXPORT_PRESETS).some(([width, height]) => width > CUSTOM_SIZE_MAX || height > CUSTOM_SIZE_MAX)) {
+      throw new Error("Export size self-check failed.");
+    }
+    console.info("Photot拼多多 self-check passed.");
+  }
 }
 
 init();
