@@ -11,7 +11,7 @@
       content="Photot拼多多是一個手機和桌面都能使用的本機照片拼貼工具。"
     />
     <title>Photot拼多多</title>
-    <link rel="stylesheet" href="./styles.css?v=20260719-2337" />
+    <link rel="stylesheet" href="./styles.css?v=1.0.5" />
   </head>
   <body>
     <div class="app-shell">
@@ -242,12 +242,22 @@
               aria-label="重新匯入照片"
               hidden
             ></button>
-            <canvas id="collageCanvas" aria-label="Photot拼多多預覽"></canvas>
+            <p class="visually-hidden" id="canvasInstructions">
+              按 Enter 切換照片，Shift 加 Enter 返回上一張；方向鍵移動照片，加號與減號縮放，數字 0 重設，Escape 取消選取。
+            </p>
+            <p class="visually-hidden" id="canvasStatus" aria-live="polite"></p>
+            <canvas
+              id="collageCanvas"
+              role="group"
+              tabindex="0"
+              aria-label="Photot拼多多互動式預覽"
+              aria-describedby="canvasInstructions"
+            ></canvas>
           </div>
         </section>
       </main>
     </div>
 
-    <script src="./app.js?v=20260719-2359"></script>
+    <script src="./app.js?v=1.0.5"></script>
   </body>
 </html>

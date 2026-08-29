@@ -1,4 +1,4 @@
-const APP_VERSION = "1.0.4";
+const APP_VERSION = "1.0.5";
 const MAX_PHOTOS = 20;
 const SOCIAL_PLATFORMS = [
   {
@@ -73,6 +73,7 @@ const CUSTOM_SIZE_DEFAULT = 3000;
 const CUSTOM_SIZE_MIN = 100;
 const CUSTOM_SIZE_MAX = 4096;
 const MAX_PHOTO_SIDE = 2560;
+const MAX_TOTAL_PHOTO_PIXELS = 32_000_000;
 const CUSTOM_SIZE_WARNING_TEXT = "最低要三位數";
 const PLACEHOLDER_COLORS = ["#f8fafc", "#eef6ff", "#f3f8ef", "#fff4e6", "#fff0f5", "#f3f0ff"];
 const MIN_FRAME_SIDE_BASE = 24;
@@ -115,6 +116,7 @@ const els = {
   addPhotoButton: document.querySelector("#addPhotoButton"),
   replacePhotoButton: document.querySelector("#replacePhotoButton"),
   canvas: document.querySelector("#collageCanvas"),
+  canvasStatus: document.querySelector("#canvasStatus"),
   canvasFrame: document.querySelector("#canvasFrame"),
   stageArea: document.querySelector(".stage-area"),
   clearButton: document.querySelector("#clearButton"),
@@ -194,6 +196,10 @@ function fitImageSize(width, height, maxSide = MAX_PHOTO_SIDE) {
   };
 }
 
+function maxPhotoSideForCount(count) {
+  return Math.min(MAX_PHOTO_SIDE, Math.floor(Math.sqrt(MAX_TOTAL_PHOTO_PIXELS / Math.max(1, count))));
+}
+
 function uid() {
   return globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 }
@@ -263,11 +269,12 @@ function beginCustomSizeEdit() {
   };
 }
 
-function showCustomSizeWarning() {
+function showCustomSizeWarning(inputs = [], message = CUSTOM_SIZE_WARNING_TEXT) {
   els.customSize.classList.add("has-warning");
-  els.customSizeWarning.textContent = CUSTOM_SIZE_WARNING_TEXT;
-  els.customWidth.setAttribute("aria-invalid", "true");
-  els.customHeight.setAttribute("aria-invalid", "true");
+  els.customSizeWarning.textContent = message;
+  els.customWidth.removeAttribute("aria-invalid");
+  els.customHeight.removeAttribute("aria-invalid");
+  inputs.forEach((input) => input.setAttribute("aria-invalid", "true"));
 }
 
 function clearCustomSizeWarning() {
@@ -321,7 +328,7 @@ function revertCustomSizeInput(input) {
 
   customSizeEditSnapshot = null;
   syncCustomSizeControls(true);
-  showCustomSizeWarning();
+  showCustomSizeWarning([], `已恢復原尺寸，${CUSTOM_SIZE_WARNING_TEXT}`);
   scheduleRender();
 }
 
@@ -347,7 +354,10 @@ function handleCustomSizeInput(input) {
     pairedCustomSizeInput(input).value = input.value;
   }
 
-  if (value === null || value < CUSTOM_SIZE_MIN) return;
+  if (value === null || value < CUSTOM_SIZE_MIN) {
+    showCustomSizeWarning(state.customSizeLocked ? [els.customWidth, els.customHeight] : [input]);
+    return;
+  }
 
   clearCustomSizeWarning();
   setCustomSizeValue(input, value);
@@ -362,12 +372,36 @@ function selectedPhoto() {
   return index >= 0 ? state.photos[index] : null;
 }
 
+function setCanvasStatus(message) {
+  if (els.canvasStatus) els.canvasStatus.textContent = message;
+}
+
+function announceSelectedPhoto() {
+  const index = selectedPhotoIndex();
+  const photo = selectedPhoto();
+  if (!photo || index < 0) return;
+  setCanvasStatus(`已選取第 ${index + 1} 張，共 ${state.photos.length} 張；縮放 ${Math.round(photo.zoom * 100)}%。`);
+}
+
+function selectPhotoAtIndex(index) {
+  if (!state.photos.length) return null;
+  const normalizedIndex = (index + state.photos.length) % state.photos.length;
+  const photo = state.photos[normalizedIndex];
+  state.selectedId = photo.id;
+  replaceButtonVisible = true;
+  resetAlignmentGuide();
+  announceSelectedPhoto();
+  scheduleRender({ resize: false });
+  return photo;
+}
+
 function clearPhotoSelection() {
   state.selectedId = null;
   replaceButtonVisible = false;
   dragState = null;
   pinchState = null;
   resetAlignmentGuide();
+  setCanvasStatus("已取消選取照片。");
   scheduleRender({ resize: false });
 }
 
@@ -482,15 +516,15 @@ function createImage(src) {
   });
 }
 
-async function createUserImage(file) {
+async function createUserImage(file, maxSide = MAX_PHOTO_SIDE) {
   const src = URL.createObjectURL(file);
 
   try {
     const img = await createImage(src);
-    const size = fitImageSize(img.width, img.height);
+    const size = fitImageSize(img.width, img.height, maxSide);
     if (size.width === img.width && size.height === img.height) return { img, src };
 
-    // ponytail: 2560px bounds mobile memory; retain originals only if print-quality single-photo export becomes a requirement.
+    // ponytail: cap total photo pixels for mobile; raise the budget only if measured export quality requires it.
     const canvas = document.createElement("canvas");
     canvas.width = size.width;
     canvas.height = size.height;
@@ -509,6 +543,26 @@ function releasePhotoImage(photo) {
     photo.img.width = 0;
     photo.img.height = 0;
   }
+}
+
+function resizePhotoImage(photo, maxSide) {
+  const size = fitImageSize(photo.img.width, photo.img.height, maxSide);
+  if (size.width === photo.img.width && size.height === photo.img.height) return;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = size.width;
+  canvas.height = size.height;
+  canvas.getContext("2d").drawImage(photo.img, 0, 0, size.width, size.height);
+  releasePhotoImage(photo);
+  photo.img = canvas;
+  photo.src = "";
+}
+
+function enforcePhotoPixelBudget(photos) {
+  const maxSide = maxPhotoSideForCount(photos.length);
+  photos.forEach((photo) => {
+    if (photo.source === "user") resizePhotoImage(photo, maxSide);
+  });
 }
 
 function photoDefaults(img, source, name, src) {
@@ -1066,7 +1120,7 @@ function resizeCanvas() {
   const isMobile = window.innerWidth <= 760;
   const viewportHeight = isMobile ? mobileViewportHeight() : window.innerHeight;
   const mobilePreviewRatio = viewportHeight < 740 ? 0.5 : 0.58;
-  const frameWidthSource = isMobile ? els.canvasFrame.parentElement.clientWidth : els.canvasFrame.clientWidth;
+  const frameWidthSource = els.canvasFrame.parentElement.clientWidth;
   const availableW = Math.max(180, frameWidthSource - padX);
   const availableH = Math.max(180, viewportHeight * (isMobile ? mobilePreviewRatio : 0.76) - padY);
   let width = Math.min(availableW, 880);
@@ -1208,6 +1262,7 @@ function clearPhotos() {
   activePointers.clear();
   resetAlignmentGuide();
   replaceButtonVisible = false;
+  setCanvasStatus("已清除所有照片。");
   closeExportMenu();
   revokeUserPhotoUrls(previousPhotos);
   scheduleRender();
@@ -1263,9 +1318,14 @@ function syncReplaceButton() {
   const inset = Math.min(8, Math.max(4, Math.min(frame.w * scaleX, frame.h * scaleY) * 0.08));
   const left = canvasRect.left - frameRect.left + frame.x * scaleX + inset;
   const top = canvasRect.top - frameRect.top + frame.y * scaleY + inset;
+  const buttonStyle = getComputedStyle(els.replacePhotoButton);
+  const buttonWidth = parseFloat(buttonStyle.width) || 44;
+  const buttonHeight = parseFloat(buttonStyle.height) || 44;
+  const safeLeft = clamp(left, 2, Math.max(2, frameRect.width - buttonWidth - 2));
+  const safeTop = clamp(top, 2, Math.max(2, frameRect.height - buttonHeight - 2));
 
-  els.replacePhotoButton.style.setProperty("--replace-x", `${Math.round(left)}px`);
-  els.replacePhotoButton.style.setProperty("--replace-y", `${Math.round(top)}px`);
+  els.replacePhotoButton.style.setProperty("--replace-x", `${Math.round(safeLeft)}px`);
+  els.replacePhotoButton.style.setProperty("--replace-y", `${Math.round(safeTop)}px`);
   els.replacePhotoButton.hidden = false;
   els.canvasFrame.classList.add("has-selected-photo");
 }
@@ -1331,8 +1391,12 @@ function updateControls() {
 
 async function addFiles(fileList) {
   if (state.isResetting || state.isImporting || state.isExporting) return;
-  const files = Array.from(fileList).filter((file) => file.type.startsWith("image/"));
-  if (!files.length) return;
+  const allFiles = Array.from(fileList);
+  const files = allFiles.filter((file) => file.type.startsWith("image/"));
+  if (!files.length) {
+    window.alert("請選擇可讀取的圖片檔案。");
+    return;
+  }
 
   const shouldReplaceDemo = hasOnlyDemoPhotos();
   const basePhotos = shouldReplaceDemo ? [] : state.photos.slice();
@@ -1346,6 +1410,8 @@ async function addFiles(fileList) {
 
   const token = nextPhotoMutationToken();
   const loadedPhotos = [];
+  const importMaxSide = maxPhotoSideForCount(basePhotos.length + accepted.length);
+  let failedCount = allFiles.length - files.length;
   let portraitCount = 0;
   let landscapeCount = 0;
   state.isImporting = true;
@@ -1355,7 +1421,7 @@ async function addFiles(fileList) {
   try {
     for (const file of accepted) {
       try {
-        const image = await createUserImage(file);
+        const image = await createUserImage(file, importMaxSide);
         if (!isCurrentPhotoMutation(token)) {
           releasePhotoImage(image);
           return;
@@ -1374,21 +1440,31 @@ async function addFiles(fileList) {
           image.src,
         );
         loadedPhotos.push(photo);
-      } catch {}
+      } catch (error) {
+        failedCount += 1;
+        console.warn(`無法讀取圖片：${file.name || "未命名檔案"}`, error);
+      }
     }
 
     if (!isCurrentPhotoMutation(token)) return;
-    if (!loadedPhotos.length) return;
+    if (!loadedPhotos.length) {
+      if (failedCount) window.alert(`${failedCount} 張照片無法讀取，請改用 PNG、JPG 或瀏覽器支援的圖片格式。`);
+      return;
+    }
 
-    state.photos = basePhotos.concat(loadedPhotos);
+    const nextPhotos = basePhotos.concat(loadedPhotos);
+    enforcePhotoPixelBudget(nextPhotos);
+    state.photos = nextPhotos;
     state.selectedId = loadedPhotos[loadedPhotos.length - 1].id;
     replaceButtonVisible = true;
+    announceSelectedPhoto();
     revokeUserPhotoUrls(previousPhotos);
 
     const loadedCount = portraitCount + landscapeCount;
     if (loadedCount > 1 && state.layout === "auto" && portraitCount !== landscapeCount) {
       state.tileOrientation = landscapeCount > portraitCount ? "landscape" : "portrait";
     }
+    if (failedCount) window.alert(`${failedCount} 張照片無法讀取，其餘照片已成功加入。`);
   } finally {
     if (!isCurrentPhotoMutation(token)) revokeUserPhotoUrls(loadedPhotos);
     if (isCurrentPhotoMutation(token)) state.isImporting = false;
@@ -1409,7 +1485,7 @@ async function replaceSelectedPhoto(fileList) {
   updateControls();
 
   try {
-    const image = await createUserImage(file);
+    const image = await createUserImage(file, maxPhotoSideForCount(state.photos.length));
     if (!isCurrentPhotoMutation(token)) {
       releasePhotoImage(image);
       return;
@@ -1431,10 +1507,13 @@ async function replaceSelectedPhoto(fileList) {
     );
     nextPhoto.id = previousPhoto.id;
     state.photos[currentIndex] = nextPhoto;
+    enforcePhotoPixelBudget(state.photos);
     state.selectedId = nextPhoto.id;
     replaceButtonVisible = true;
-  } catch {
-    // Unsupported images are ignored so the current collage remains intact.
+    announceSelectedPhoto();
+  } catch (error) {
+    console.warn(`無法重新匯入圖片：${file.name || "未命名檔案"}`, error);
+    window.alert("這張照片無法讀取，原本的照片已保留。請改用 PNG、JPG 或瀏覽器支援的圖片格式。");
   } finally {
     if (isCurrentPhotoMutation(token)) state.isImporting = false;
     scheduleRender();
@@ -1448,6 +1527,7 @@ function setPlatform(platformId) {
     state.ratio = platform.variants[0].id;
   }
   closeExportMenu();
+  clearCustomSizeWarning();
   animatePreviewTransition();
   scheduleRender();
 }
@@ -1457,6 +1537,7 @@ function setRatio(ratio) {
   const platform = platformForRatio(ratio);
   if (platform) state.platform = platform.id;
   closeExportMenu();
+  clearCustomSizeWarning();
   animatePreviewTransition();
   scheduleRender();
 }
@@ -1559,6 +1640,7 @@ function startCanvasDrag(event) {
   if (hit && activePointers.size === 1) {
     state.selectedId = hit.photo.id;
     replaceButtonVisible = true;
+    announceSelectedPhoto();
     const offsets = applyPhotoBoundsAndSnap(hit.photo, hit.frame, hit.photo.offsetX, hit.photo.offsetY, true);
     dragState = {
       id: hit.photo.id,
@@ -1709,6 +1791,64 @@ function handleWheel(event) {
   photo.zoom = clamp(nextZoom, 1, 2.6);
   constrainSelectedPhotoToFrame();
   syncZoomControls();
+  scheduleCanvasRender();
+}
+
+function handleCanvasKeydown(event) {
+  if (!state.photos.length) return;
+
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    const currentIndex = selectedPhotoIndex();
+    selectPhotoAtIndex(currentIndex < 0 ? 0 : currentIndex + (event.shiftKey ? -1 : 1));
+    return;
+  }
+
+  if (["PageUp", "[", "PageDown", "]", "Home", "End"].includes(event.key)) {
+    event.preventDefault();
+    const currentIndex = selectedPhotoIndex();
+    if (event.key === "Home") selectPhotoAtIndex(0);
+    else if (event.key === "End") selectPhotoAtIndex(state.photos.length - 1);
+    else selectPhotoAtIndex(currentIndex < 0 ? 0 : currentIndex + (["PageUp", "["].includes(event.key) ? -1 : 1));
+    return;
+  }
+
+  if (event.key === "Escape") {
+    if (state.selectedId) {
+      event.preventDefault();
+      clearPhotoSelection();
+    }
+    return;
+  }
+
+  const editKeys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "+", "=", "-", "_", "0"];
+  if (!editKeys.includes(event.key)) return;
+  event.preventDefault();
+  if (!selectedPhoto()) selectPhotoAtIndex(0);
+
+  const photo = selectedPhoto();
+  const frame = selectedFrame();
+  if (!photo || !frame) return;
+
+  if (event.key.startsWith("Arrow")) {
+    const step = event.shiftKey ? 0.05 : 0.02;
+    if (event.key === "ArrowLeft") photo.offsetX -= step;
+    if (event.key === "ArrowRight") photo.offsetX += step;
+    if (event.key === "ArrowUp") photo.offsetY -= step;
+    if (event.key === "ArrowDown") photo.offsetY += step;
+    constrainPhotoToFrame(photo, frame);
+  } else if (["+", "="].includes(event.key)) {
+    photo.zoom = clamp(photo.zoom + 0.04, 1, 2.6);
+    constrainPhotoToFrame(photo, frame);
+  } else if (["-", "_"].includes(event.key)) {
+    photo.zoom = clamp(photo.zoom - 0.04, 1, 2.6);
+    constrainPhotoToFrame(photo, frame);
+  } else {
+    resetSelected();
+  }
+
+  syncZoomControls();
+  announceSelectedPhoto();
   scheduleCanvasRender();
 }
 
@@ -1938,6 +2078,7 @@ function bindEvents() {
   els.canvas.addEventListener("pointercancel", endCanvasDrag);
   els.canvas.addEventListener("wheel", handleWheel, { passive: false });
   els.canvas.addEventListener("dblclick", resetSelected);
+  els.canvas.addEventListener("keydown", handleCanvasKeydown);
   els.canvasFrame.addEventListener("pointerdown", clearSelectionFromFrameBlank);
   els.stageArea.addEventListener("pointerdown", clearSelectionFromStageBlank);
 
@@ -1980,8 +2121,43 @@ async function init() {
   if (new URLSearchParams(window.location.search).has("self-test")) {
     const fitted = fitImageSize(6000, 3000);
     if (fitted.width !== 2560 || fitted.height !== 1280) throw new Error("Image resize self-check failed.");
+    if (maxPhotoSideForCount(MAX_PHOTOS) ** 2 * MAX_PHOTOS > MAX_TOTAL_PHOTO_PIXELS) {
+      throw new Error("Photo memory budget self-check failed.");
+    }
+    const testPhoto = { source: "user", src: "", img: document.createElement("canvas") };
+    testPhoto.img.width = 200;
+    testPhoto.img.height = 100;
+    resizePhotoImage(testPhoto, 100);
+    if (testPhoto.img.width !== 100 || testPhoto.img.height !== 50) {
+      throw new Error("Photo resize self-check failed.");
+    }
+    releasePhotoImage(testPhoto);
     if (Object.values(EXPORT_PRESETS).some(([width, height]) => width > CUSTOM_SIZE_MAX || height > CUSTOM_SIZE_MAX)) {
       throw new Error("Export size self-check failed.");
+    }
+    const testFrames = makeMosaicFrames(MAX_PHOTOS, 1080, 1080, 18);
+    if (
+      testFrames.length !== MAX_PHOTOS ||
+      testFrames.some((frame) =>
+        [frame.x, frame.y, frame.w, frame.h].some((value) => !Number.isFinite(value) || value < 0),
+      )
+    ) {
+      throw new Error("Layout self-check failed.");
+    }
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    if (window.innerWidth > 760 && state.ratio === DEFAULT_RATIO) {
+      const parentWidth = els.canvasFrame.parentElement.clientWidth;
+      const frameStyle = getComputedStyle(els.canvasFrame);
+      const padX = parseFloat(frameStyle.paddingLeft) + parseFloat(frameStyle.paddingRight);
+      const padY = parseFloat(frameStyle.paddingTop) + parseFloat(frameStyle.paddingBottom);
+      const expectedWidth = Math.min(
+        880,
+        Math.max(180, parentWidth - padX),
+        Math.max(180, window.innerHeight * 0.76 - padY),
+      );
+      if (Math.abs(preview.width - expectedWidth) > 2) {
+        throw new Error("Desktop preview size self-check failed.");
+      }
     }
     console.info("Photot拼多多 self-check passed.");
   }

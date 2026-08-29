@@ -10,6 +10,8 @@ Photot拼多多是一個純前端照片拼貼網頁，支援手機與桌面瀏�
 - 間距、圓角與背景色調整
 - 照片拖曳調整與縮放
 - 過大照片匯入時自動縮放，降低手機記憶體用量
+- 依照片數控制總像素預算，避免多張照片耗盡手機記憶體
+- 鍵盤可選取、移動、縮放與重設照片
 - PNG / JPG 匯出
 
 ## 使用方式
@@ -21,5 +23,9 @@ python3 -m http.server 5173
 ```
 
 然後打開 `http://localhost:5173`。
+
+公開版本：<https://toto-168.github.io/photot-pinduoduo/>
+
+鍵盤操作：焦點移到拼圖後，按 `Enter` 切換照片、方向鍵移動、`+` / `-` 縮放、`0` 重設、`Escape` 取消選取。
 
 核心回歸檢查可開啟 `http://localhost:5173/?self-test=1`；Console 顯示 `self-check passed` 即為通過。

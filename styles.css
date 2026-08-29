@@ -58,6 +58,18 @@ button:disabled {
   transform: none;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .app-shell {
   min-height: 100vh;
   padding: max(18px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom))
@@ -894,6 +906,11 @@ button:disabled:hover {
   cursor: grabbing;
 }
 
+#collageCanvas:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 4px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -941,6 +958,7 @@ button:disabled:hover {
 
   .button {
     width: auto;
+    min-height: 44px;
     padding: 0 10px;
   }
 
@@ -990,7 +1008,7 @@ button:disabled:hover {
 
   .canvas-toolbar .button.subtle {
     width: auto;
-    min-height: 30px;
+    min-height: 44px;
     padding: 0 10px;
     border-color: rgba(255, 255, 255, 0.74);
     background: rgba(255, 255, 255, 0.74);
@@ -1012,15 +1030,15 @@ button:disabled:hover {
   .canvas-add-button {
     top: -10px;
     left: 50%;
-    width: 38px;
-    height: 38px;
+    width: 44px;
+    height: 44px;
   }
 
   .canvas-replace-button {
     top: 9px;
     left: 9px;
-    width: 34px;
-    height: 34px;
+    width: 44px;
+    height: 44px;
   }
 
   .canvas-replace-button {
@@ -1045,8 +1063,9 @@ button:disabled:hover {
   }
 
   .segment,
-  .chip {
-    min-height: 32px;
+  .chip,
+  .orientation-button {
+    min-height: 44px;
   }
 
   .ratio-grid {
@@ -1067,6 +1086,20 @@ button:disabled:hover {
     font-size: 11px;
   }
 
+  .custom-size {
+    grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr);
+  }
+
+  .custom-size input,
+  .size-lock {
+    min-height: 44px;
+    height: 44px;
+  }
+
+  .size-lock {
+    width: 44px;
+  }
+
   .layout-grid {
     gap: 7px;
   }
@@ -1076,11 +1109,25 @@ button:disabled:hover {
   }
 
   .range-row {
-    min-height: 34px;
+    min-height: 44px;
+  }
+
+  input[type="range"] {
+    min-height: 44px;
   }
 
   .swatch-row {
-    min-height: 36px;
+    align-items: start;
+    min-height: 96px;
+  }
+
+  .swatches {
+    grid-template-columns: repeat(3, 44px);
+  }
+
+  .swatch {
+    width: 44px;
+    height: 44px;
   }
 }
 
